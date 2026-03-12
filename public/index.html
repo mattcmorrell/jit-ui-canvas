@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employee Graph Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-inner">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      Employee Graph Intelligence
+      <span>Acme Co</span>
+    </div>
+    <div class="top-bar-right">
+      <div class="top-bar-meta">148 employees &middot; 783 nodes &middot; 3,281 edges</div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Spatial viewport -->
+<div id="viewport">
+  <div id="world">
+    <svg id="svg-connections"></svg>
+    <!-- Center placeholder for person card -->
+    <div id="center-placeholder" class="center-placeholder" style="display:none;">
+      <div class="center-placeholder-avatar"></div>
+      <div class="center-placeholder-name"></div>
+    </div>
+  </div>
+
+  <!-- Empty state (centered in viewport) -->
+  <div class="empty-state" id="empty-state">
+    <h1>What would you like to know?</h1>
+    <p>Ask about your organization and watch the AI walk your employee graph to discover insights.</p>
+    <div class="suggestion-chips" id="suggestion-chips">
+      <button class="suggestion-chip" data-query="Raj Patel just resigned. What should I know?">Raj Patel just resigned. What should I know?</button>
+      <button class="suggestion-chip" data-query="Why is Sarah Chen so effective? How do we develop more people like her?">Why is Sarah Chen so effective?</button>
+    </div>
+  </div>
+</div>
+
+<!-- Narrative panel (floating, bottom-left) -->
+<div id="narrative-panel" class="narrative-panel" style="display:none;">
+  <div class="narrative-panel-header">
+    <div class="narrative-panel-dot"></div>
+    <span>AI Insight</span>
+    <button class="narrative-panel-close" id="narrative-close">&times;</button>
+  </div>
+  <div class="narrative-panel-body" id="narrative-body"></div>
+</div>
+
+<!-- Action drawer (right edge, slides in) -->
+<div id="action-drawer" class="action-drawer">
+  <div class="action-drawer-tab" id="action-drawer-tab">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    Actions
+  </div>
+  <div class="action-drawer-body" id="action-drawer-body"></div>
+</div>
+
+<!-- Status indicator (floating, bottom-center above input) -->
+<div id="status-indicator" class="status-indicator" style="display:none;">
+  <div class="status-dot"></div>
+  <span class="status-text"></span>
+</div>
+
+<div class="input-bar-wrapper">
+  <div class="input-bar" id="input-bar">
+    <input type="text" id="chat-input" placeholder="Ask about your organization..." autocomplete="off">
+    <button class="send-btn" id="send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script src="primitives.js"></script>
+<script src="canvas-engine.js"></script>
+<script src="app.js"></script>
+<script src="/feedback-panel.js"></script>
+</body>
+</html>
