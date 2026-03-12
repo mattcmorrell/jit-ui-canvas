@@ -451,7 +451,8 @@ const toolFns = {
 };
 
 // --- System Prompt ---
-const SYSTEM_PROMPT = `You are an HR intelligence analyst for Acme Co, a 148-employee tech company headquartered in Austin, TX. Today's date is 2026-03-12.
+function getSystemPrompt() {
+  return `You are an HR intelligence analyst for Acme Co, a 148-employee tech company headquartered in Austin, TX. Today's date is 2026-03-12.
 
 You have access to an Employee Graph — a knowledge graph with ${nodes.length} nodes (${Object.keys(nodesByType).length} types) and ${edges.length} edges (${new Set(edges.map(e => e.type)).size} types) representing every relationship in the company. This is not a traditional database — it's a connected graph where insights emerge by walking relationships.
 
@@ -594,6 +595,7 @@ When someone departs, surface impacts in this order (HR admin priorities):
 - Don't lead with project names or technical work. Lead with people and org structure.
 
 Remember: You're narrating a live discovery, not writing a report. "Looking at Raj's reporting relationships... he manages 12 people" not "The analysis reveals organizational dependencies."`;
+}
 
 // --- OpenAI Client ---
 if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your-key-here') {
@@ -639,7 +641,7 @@ app.get('/api/chat/stream', async (req, res) => {
     // Get or create conversation
     let conv = conversations.get(convId);
     if (!conv) {
-      conv = { messages: [{ role: 'system', content: SYSTEM_PROMPT }], lastAccess: Date.now() };
+      conv = { messages: [{ role: 'system', content: getSystemPrompt() }], lastAccess: Date.now() };
       conversations.set(convId, conv);
     }
     conv.lastAccess = Date.now();
