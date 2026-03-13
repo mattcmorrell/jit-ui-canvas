@@ -2,14 +2,14 @@
 
 :root {
   --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a28;
-  --bg-card: #14141f;
-  --border-subtle: rgba(255,255,255,0.06);
-  --border-medium: rgba(255,255,255,0.1);
+  --bg-secondary: #14141f;
+  --bg-tertiary: #2a2a45;
+  --bg-card: #1e1e35;
+  --border-subtle: rgba(255,255,255,0.12);
+  --border-medium: rgba(255,255,255,0.18);
   --text-primary: #e8e8ef;
-  --text-secondary: #8888a0;
-  --text-muted: #55556a;
+  --text-secondary: #b0b0c8;
+  --text-muted: #9898b0;
   --accent-red: #ff4d6a;
   --accent-red-dim: rgba(255,77,106,0.15);
   --accent-orange: #ff8c42;
