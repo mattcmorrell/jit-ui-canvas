@@ -6,10 +6,24 @@ Transform the infinite canvas from scattered individual cards into a **brick gri
 **JIT-UI**: The LLM decides what visual format best communicates each insight — bar charts for rankings, donut charts for proportions, timelines for sequences, alongside the existing card types. The frontend renders structured data the LLM emits, not raw HTML.
 
 ## Current Direction
+
+### JIT-UI Direction
+The current primitives (person_card, impact_card, cascade_path, relationship_map) are hardcoded renderers — they look okay but they're rigid. The goal is to move toward the LLM deciding what visual format each insight needs, not just picking from a fixed menu of card types.
+
+**Charts are the proof of concept.** The LLM emits structured data (`{ chartType: "bar", items: [...] }`) and the frontend renders SVG. This works well — the model picks bar charts for rankings, donuts for breakdowns, timelines for sequences. No hardcoded "if person resigned, show bar chart" logic.
+
+**The question now**: can we extend this pattern to replace the other primitives? Instead of the LLM emitting `{ type: "impact_card", severity: "critical", ... }` that maps to a specific React-like template, could it emit something more flexible — a layout description, a mini visualization spec, or structured content that a smarter renderer interprets?
+
+**`?raw` mode exists to evaluate this.** It strips the styled primitives and shows what the LLM is actually producing — clean text + real charts. This lets us see whether the model's output is good enough to drive visuals directly, or whether we need the primitive layer as a translation step.
+
+**What's working**: Charts, narratives, action lists. The LLM's block composition (choosing what types to emit, in what order) is strong.
+
+**What's not working yet**: The card primitives (person, impact, cascade) are visually mediocre and the model is forced into their rigid schemas. The relationship_map SVG renderer is basic.
+
+### Canvas Infrastructure
 **Brick grid allocator** on the infinite canvas:
 - 1 brick = 96px (atomic unit)
 - Every block snaps to brick coordinates (col, row)
-- Blocks declare their size in bricks based on content type
 - Sections group related blocks — items pack tight within a section
 - Whitespace between sections communicates separation (Gestalt proximity)
   - 0 gap: items within a section (tightly related)
@@ -17,38 +31,24 @@ Transform the infinite canvas from scattered individual cards into a **brick gri
   - 2+ brick gap: separate concept groups
 - Canvas still pans/zooms — you're navigating a structured grid, not a scatter plot
 - **No SVG connection lines** — relationships expressed through spatial grouping and containment
+- Dynamic row tracking (`nextRowLeft`/`nextRowRight`) prevents overlap regardless of content size
 
-### Layout Structure (from wireframe)
-```
-Person card [3×3]  ·1 gap·  Staffing consequences [6×3]
-(metrics inside)             (scenario/impact cards inside)
-
-              ·· 2 gap (vertical) ··
-
-Other consequences [3×2]  ·1 gap·  Detail panel [6×2] (on click)
-(cascade/other items)                (appears when scenario selected)
-```
-
-### Architecture
-- **Section**: A labeled container on the canvas that holds child cards. Positioned at brick coordinates. Has a title, border, internal padding.
-- **Brick allocator**: Assigns grid positions to sections. Sections arrive as blocks stream in. Allocator tracks occupied cells and places new sections in the next available position respecting gaps.
-- **Block → Section mapping**:
-  - `person_card` + `metric_row` → "Person" section (top-left)
-  - `impact_card` → "Staffing consequences" section (top-right)
-  - `cascade_path` → "Other consequences" section (bottom-left)
-  - `relationship_map` → its own section
-  - `chart` / `custom_visual` → placed in whichever column has more room
-  - `action_list` → stays in the drawer (not on canvas)
-  - `narrative` → stays in the floating panel
+### Block → Placement mapping
+- `person_card` + `metric_row` → left column
+- `impact_card` → "Key Impacts" section, right column
+- `cascade_path` → "How It Connects" section, left column
+- `relationship_map` → "Organizational Footprint" section, right column
+- `chart` / `custom_visual` → placed in whichever column has more room
+- `action_list` → stays in the drawer (not on canvas)
+- `narrative` → stays in the floating panel
 
 ## What's Done
-1. **canvas-engine.js** — Rewritten as brick grid allocator. API: `addBlock(id, el, col, row)`, `addSection(id, col, row, title)`, `addToSection(sectionId, el)`. All SVG connection code removed. Pan/zoom/camera preserved.
-2. **app.js** — `placeBlock()` rewritten for section-based placement with dynamic row tracking (`nextRowLeft`/`nextRowRight`). Person card at (0,nextRowLeft), impacts section at (5,nextRowRight), cascades at (0,nextRowLeft), charts placed in column with more room. `advanceRow()` measures DOM heights to prevent overlap.
-3. **primitives.js** — Added `renderMetricChips(metrics)` for inline metric display. Added chart rendering: `renderBarChart`, `renderDonutChart`, `renderTimeline` with SVG — LLM emits structured data, frontend renders.
-4. **styles.css** — Full brick grid styles, chart styles (bar-row, bar-track, bar-fill, donut-chart, donut-legend, timeline-track, timeline-item), person card hero as horizontal layout with metric chips.
-5. **server.js** — 8 block types in system prompt (added `chart` with bar/donut/timeline schemas). Added `get_org_stats` tool for aggregate queries (managers_by_reports, team_sizes, tenure/level/location distributions, skill_coverage). This prevents the model from making dozens of individual queries for ranking-type questions.
-6. Grid dot background updated to 96px brick spacing.
-7. SVG connection layer fully removed from rendering pipeline.
+1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection`, `addToSection`. SVG connections removed.
+2. **app.js** — Section-based placement with dynamic row tracking. `?raw` mode flag for evaluating LLM output without styled primitives.
+3. **primitives.js** — Chart renderers (bar, donut, timeline) as SVG. Hardcoded card primitives (person, impact, cascade, relationship_map, action_list). Metric chips.
+4. **styles.css** — Brick grid, chart, raw-mode, and card primitive styles.
+5. **server.js** — 8 block types in system prompt. 8 graph tools including `get_org_stats` (aggregate rankings: managers_by_reports, team_sizes, department_sizes, division_sizes, tenure/level/location distributions, skill_coverage). 90s timeout, 6144 token limit.
+6. **`?raw` mode** — Append `?raw` to URL. Charts render as real SVG visuals. Cards render as clean minimal text. Lets you evaluate the LLM's block composition and data quality independent of primitive styling.
 
 ## Rejected Approaches
 - **Radial/polar layout**: Scattered cards with no hierarchy. Replaced in previous iteration.
@@ -58,12 +58,12 @@ Other consequences [3×2]  ·1 gap·  Detail panel [6×2] (on click)
 - **Individual queries for rankings**: Model made 6+ tool calls to query each manager individually for "who has the most reports?", context got huge, final response generation hung. Fixed by adding `get_org_stats` aggregate tool.
 
 ## Open Questions
-- Detail panel interaction: click scenario → detail panel appears in bottom-right of grid. Close with X. How does this affect the brick allocator?
-- More chart types? Scatter, heatmap, stacked bar?
+- Can the chart pattern (LLM emits structured data, frontend renders) replace the card primitives too? Or do we need the primitive layer as a translation step?
+- What's the right abstraction for the LLM to describe a visual — a layout spec? A mini component DSL? Just richer structured data?
 - Should chart blocks be interactive (click a bar → drill into that person)?
 
 ## Next Steps
-1. Test timeline chart type
-2. Add more suggestion chips for chart-style queries
+1. Evaluate `?raw` output across multiple scenarios to understand what the LLM is good/bad at composing
+2. Design a more flexible rendering approach to replace the rigid card primitives
 3. Consider interactive charts (click bar → follow-up query)
 4. Clean up debug console.log statements
