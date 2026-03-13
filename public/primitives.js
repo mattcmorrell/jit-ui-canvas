@@ -412,6 +412,21 @@ const Primitives = (() => {
     return div;
   }
 
+  // --- 8. Metric Chips (inline inside person card) ---
+  function renderMetricChips(metrics) {
+    if (!metrics || metrics.length === 0) return null;
+    const container = el('div', 'metric-chips');
+    for (const m of metrics) {
+      const chip = el('div', 'metric-chip');
+      chip.innerHTML = `
+        <span class="metric-chip-value">${m.value}</span>
+        <span class="metric-chip-label">${m.label}</span>
+      `;
+      container.appendChild(chip);
+    }
+    return container;
+  }
+
   // --- Renderer dispatch ---
   function render(block, onFollowUp) {
     const type = block.type;
@@ -434,6 +449,7 @@ const Primitives = (() => {
     render,
     renderPersonCardHero,
     renderSingleMetric,
+    renderMetricChips,
     renderNarrativeContent
   };
 })();

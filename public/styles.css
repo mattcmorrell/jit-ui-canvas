@@ -181,67 +181,85 @@ body {
   pointer-events: none;
   z-index: 1;
   background-image: radial-gradient(circle, var(--grid-dot) 1.2px, transparent 1.2px);
-  background-size: 200px 200px;
+  background-size: 96px 96px;
 }
 
-#svg-connections {
+/* --- Canvas Blocks (standalone items on brick grid) --- */
+.canvas-block {
   position: absolute;
-  top: -4000px;
-  left: -4000px;
-  width: 8000px;
-  height: 8000px;
-  pointer-events: none;
-  overflow: visible;
-  z-index: 5;
-}
-
-/* --- Spatial Blocks --- */
-.spatial-block {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: translate(-50%, -50%);
   z-index: 10;
   pointer-events: auto;
-  will-change: left, top, opacity, transform;
+  will-change: opacity, transform;
 }
 
-/* Ring-specific max widths */
-.spatial-block[data-ring="0"] { max-width: 360px; min-width: 280px; z-index: 20; }
-.spatial-block[data-ring="1"] { max-width: 150px; min-width: 115px; }
-.spatial-block[data-ring="2"] { max-width: 260px; min-width: 180px; }
-.spatial-block[data-ring="3"] { max-width: 240px; min-width: 170px; }
-.spatial-block[data-ring="4"] { max-width: 480px; min-width: 320px; }
+/* --- Canvas Sections (titled containers on brick grid) --- */
+.canvas-section {
+  position: absolute;
+  z-index: 10;
+  pointer-events: auto;
+  will-change: opacity, transform;
+  min-width: 320px;
+  max-width: 480px;
+}
 
-/* Severity-based sizing for impact cards on ring 2 */
-.spatial-block.severity-critical { max-width: 300px; min-width: 240px; }
-.spatial-block.severity-high { max-width: 260px; min-width: 200px; }
-.spatial-block.severity-medium { max-width: 230px; min-width: 180px; }
-.spatial-block.severity-low { max-width: 200px; min-width: 150px; }
+.section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 4px 10px;
+}
 
-/* Critical glow */
-.spatial-block.severity-critical .impact-card {
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Severity glow on impact cards in sections */
+.impact-card.critical {
   box-shadow: 0 0 30px rgba(255,77,106,0.2), 0 0 60px rgba(255,77,106,0.1);
 }
-.spatial-block.severity-high .impact-card {
+.impact-card.high {
   box-shadow: 0 0 20px rgba(255,140,66,0.15);
 }
 
-/* --- SVG Connections --- */
-.connection-path {
-  stroke: var(--accent-purple);
-  stroke-width: 1.5;
-  opacity: 0.3;
+/* --- Metric Chips (inline inside person card) --- */
+.metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
 }
-.connection-label {
-  fill: var(--text-muted);
-  font-size: 9px;
-  font-family: 'Inter', sans-serif;
-  opacity: 0.5;
+
+.metric-chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  transition: border-color 0.2s;
 }
-.connection-dot {
-  fill: var(--accent-purple);
-  opacity: 0.4;
+
+.metric-chip:hover {
+  border-color: var(--accent-purple);
+}
+
+.metric-chip-value {
+  font-weight: 700;
+  color: var(--accent-purple);
+  font-size: 0.9rem;
+}
+
+.metric-chip-label {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
 }
 
 /* --- Center Placeholder --- */
@@ -650,6 +668,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 .person-meta .meta-icon {
   color: var(--accent-purple);
@@ -675,43 +694,54 @@ body {
   margin-left: 4px;
 }
 
-/* --- Hero Person Card --- */
+/* --- Hero Person Card (wide, horizontal top row + chips below) --- */
 .person-card-hero {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 28px 32px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  text-align: left;
+  padding: 22px 26px;
+  width: 460px;
   border-color: var(--accent-purple);
   box-shadow: 0 0 40px var(--agent-glow), 0 8px 32px rgba(0,0,0,0.3);
   background: linear-gradient(135deg, var(--bg-card) 0%, var(--agent-accent-dim) 100%);
 }
 .person-card-hero .person-info {
-  text-align: center;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
 }
 .person-card-hero .person-meta {
-  justify-content: center;
+  justify-content: flex-start;
+}
+/* Hide person-stats in hero — metric chips replace them with richer data */
+.person-card-hero .person-stats {
+  display: none;
+}
+/* Metric chips span full width below avatar+info row */
+.person-card-hero .metric-chips {
+  flex-basis: 100%;
+  margin-top: 16px;
+  padding-top: 16px;
 }
 .hero-avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.8rem;
+  font-size: 1.4rem;
   font-weight: 700;
   flex-shrink: 0;
 }
 .hero-avatar.active { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .hero-avatar.terminated { background: var(--accent-red-dim); color: var(--accent-red); }
 .hero-name {
-  font-size: 1.3rem !important;
+  font-size: 1.1rem !important;
 }
 .hero-role {
-  font-size: 0.9rem !important;
-}
-.hero-stats {
-  justify-content: center;
+  font-size: 0.82rem !important;
 }
 
 /* --- Single Metric (ring 1, decomposed) --- */
@@ -781,26 +811,12 @@ body {
   font-size: 0.78rem;
   line-height: 1.45;
   margin-bottom: 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* Expand on hover */
-.spatial-block:hover .impact-description {
-  -webkit-line-clamp: unset;
   overflow: visible;
 }
 .affected-people {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-height: 30px;
-  overflow: hidden;
-}
-.spatial-block:hover .affected-people {
-  max-height: none;
-  overflow: visible;
 }
 .person-chip {
   display: inline-flex;

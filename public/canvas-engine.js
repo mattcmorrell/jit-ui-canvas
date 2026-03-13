@@ -1,34 +1,18 @@
-// canvas-engine.js — Grid-based spatial layout engine for JIT-UI canvas
-// Structured row layout, pan/zoom, SVG connections, camera control
+// canvas-engine.js — Brick grid spatial engine for JIT-UI canvas
+// Sections + blocks snap to a brick grid. Pan/zoom. No connection lines.
 
 const CanvasEngine = (() => {
 
-  // --- Grid Config ---
-  const GRID_SIZE = 200;     // Visual grid dot spacing (px)
+  // --- Brick Grid Config ---
+  const BRICK = 96;           // 1 brick = 96px (atomic grid unit)
   const MIN_SCALE = 0.3;
   const MAX_SCALE = 2.0;
-  const TRANSITION_MS = 600;
-
-  // Row layout configuration per ring index
-  // y: vertical center of this row (world coords, person at origin)
-  // cardW: estimated card width for spacing calculation
-  // gap: horizontal gap between cards in the row
-  // rowGap: vertical offset when a row wraps to a second line
-  const ROW_CONFIG = [
-    { y: 0,    cardW: 360, gap: 0,  rowGap: 0   },   // Ring 0: Person (centered)
-    { y: 300,  cardW: 150, gap: 50, rowGap: 120  },   // Ring 1: Metrics
-    { y: 600,  cardW: 260, gap: 60, rowGap: 200  },   // Ring 2: Impacts
-    { y: 940,  cardW: 240, gap: 60, rowGap: 180  },   // Ring 3: Cascades
-    { y: 1300, cardW: 480, gap: 80, rowGap: 440  },   // Ring 4: Rel Maps
-  ];
-
-  const MAX_ROW_WIDTH = 1800; // Wrap to next line if row exceeds this
 
   // --- State ---
-  let viewport, world, svgLayer;
+  let viewport, world;
   let transform = { x: 0, y: 0, scale: 1 };
-  let blocks = new Map(); // id → { el, ring, x, y, metadata }
-  let connections = [];
+  let blocks = new Map();     // id → { el, col, row }
+  let sections = new Map();   // id → { el, col, row, bodyEl }
   let isPanning = false;
   let panStart = { x: 0, y: 0 };
   let panOrigin = { x: 0, y: 0 };
@@ -36,21 +20,17 @@ const CanvasEngine = (() => {
   let animationFrame = null;
 
   // --- Init ---
-  function init(viewportEl, worldEl, svgEl) {
+  function init(viewportEl, worldEl) {
     viewport = viewportEl;
     world = worldEl;
-    svgLayer = svgEl;
 
-    // Center the world in the viewport
     recalcCenter();
     transform.x = worldCenter.x;
     transform.y = worldCenter.y;
     applyTransform();
 
-    // Create visual grid layer
     createGridLayer();
 
-    // Mouse/trackpad events
     viewport.addEventListener('pointerdown', onPointerDown);
     viewport.addEventListener('pointermove', onPointerMove);
     viewport.addEventListener('pointerup', onPointerUp);
@@ -74,7 +54,7 @@ const CanvasEngine = (() => {
 
   // --- Pan/Zoom ---
   function onPointerDown(e) {
-    if (e.target.closest('.spatial-block, .narrative-panel, .action-drawer, .input-bar-wrapper, .empty-state, .suggestion-chip, button, a, input')) return;
+    if (e.target.closest('.canvas-block, .canvas-section, .narrative-panel, .action-drawer, .input-bar-wrapper, .empty-state, .suggestion-chip, button, a, input')) return;
     isPanning = true;
     panStart.x = e.clientX;
     panStart.y = e.clientY;
@@ -91,7 +71,7 @@ const CanvasEngine = (() => {
     applyTransform();
   }
 
-  function onPointerUp(e) {
+  function onPointerUp() {
     isPanning = false;
     viewport.style.cursor = '';
   }
@@ -102,7 +82,6 @@ const CanvasEngine = (() => {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Zoom toward cursor
     const delta = -e.deltaY * 0.001;
     const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, transform.scale * (1 + delta)));
     const ratio = newScale / transform.scale;
@@ -118,212 +97,81 @@ const CanvasEngine = (() => {
     world.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
   }
 
-  // --- Layout ---
-  function addBlock(id, element, ring, metadata = {}) {
-    element.classList.add('spatial-block');
+  // --- Blocks (standalone elements on the brick grid) ---
+  function addBlock(id, element, col, row) {
+    element.classList.add('canvas-block');
     element.dataset.blockId = id;
-    element.dataset.ring = ring;
-
-    // Start slightly scaled down and transparent for animation
+    element.style.left = `${col * BRICK}px`;
+    element.style.top = `${row * BRICK}px`;
     element.style.opacity = '0';
-    element.style.transform = 'translate(-50%, -50%) scale(0.85)';
+    element.style.transform = 'scale(0.95)';
 
     world.appendChild(element);
 
-    const entry = { el: element, ring, metadata, x: 0, y: 0 };
+    const entry = { el: element, col, row };
     blocks.set(id, entry);
 
-    // Recalculate positions for all blocks on this row
-    redistributeRing(ring);
-
-    // Animate in after position is set
     requestAnimationFrame(() => {
-      element.style.transition = `left ${TRANSITION_MS}ms cubic-bezier(0.16,1,0.3,1), top ${TRANSITION_MS}ms cubic-bezier(0.16,1,0.3,1), opacity 0.4s ease, transform 0.4s cubic-bezier(0.16,1,0.3,1)`;
+      element.style.transition = 'opacity 0.4s ease, transform 0.4s cubic-bezier(0.16,1,0.3,1)';
       element.style.opacity = '1';
-      element.style.transform = 'translate(-50%, -50%) scale(1)';
+      element.style.transform = 'scale(1)';
     });
-
-    // Update connections after layout
-    requestAnimationFrame(() => updateAllConnections());
 
     return entry;
   }
 
-  function redistributeRing(ring) {
-    let ringBlocks = [...blocks.values()].filter(b => b.ring === ring);
-    const count = ringBlocks.length;
-    if (count === 0) return;
+  // --- Sections (titled containers that hold child elements) ---
+  function addSection(id, col, row, title) {
+    const el = document.createElement('div');
+    el.className = 'canvas-section';
+    el.dataset.sectionId = id;
+    el.style.left = `${col * BRICK}px`;
+    el.style.top = `${row * BRICK}px`;
+    el.style.opacity = '0';
+    el.style.transform = 'scale(0.97)';
 
-    const config = ROW_CONFIG[ring] || {
-      y: ring * 300,
-      cardW: 260,
-      gap: 60,
-      rowGap: 200
-    };
-
-    // Ring 0: person card always at origin
-    if (ring === 0) {
-      for (const b of ringBlocks) {
-        b.x = 0;
-        b.y = 0;
-        positionElement(b);
-      }
-      return;
+    if (title) {
+      const titleEl = document.createElement('div');
+      titleEl.className = 'section-title';
+      titleEl.textContent = title;
+      el.appendChild(titleEl);
     }
 
-    // Sort impact cards by severity (most critical leftmost)
-    if (ring === 2) {
-      const order = { critical: 0, high: 1, medium: 2, low: 3 };
-      ringBlocks.sort((a, b) =>
-        (order[a.metadata?.severity] ?? 2) - (order[b.metadata?.severity] ?? 2)
-      );
-    }
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'section-body';
+    el.appendChild(bodyEl);
 
-    const step = config.cardW + config.gap;
-    const maxPerRow = Math.max(1, Math.floor((MAX_ROW_WIDTH + config.gap) / step));
+    world.appendChild(el);
 
-    for (let i = 0; i < count; i++) {
-      const rowIdx = Math.floor(i / maxPerRow);
-      const colIdx = i % maxPerRow;
-      const countInRow = Math.min(maxPerRow, count - rowIdx * maxPerRow);
+    const entry = { el, col, row, bodyEl };
+    sections.set(id, entry);
 
-      const b = ringBlocks[i];
-      b.x = (colIdx - (countInRow - 1) / 2) * step;
-      b.y = config.y + rowIdx * config.rowGap;
-      positionElement(b);
-    }
-  }
-
-  function positionElement(blockEntry) {
-    const { el, x, y } = blockEntry;
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-  }
-
-  // --- Connections (SVG) ---
-  function addConnection(sourceId, targetId, steps, title) {
-    const conn = { sourceId, targetId, steps, title, el: null };
-    connections.push(conn);
-    renderConnection(conn);
-    return conn;
-  }
-
-  function renderConnection(conn) {
-    const source = blocks.get(conn.sourceId);
-    const target = blocks.get(conn.targetId);
-    if (!source || !target) return;
-
-    // Remove old line if exists
-    if (conn.el) conn.el.remove();
-
-    const svgNS = 'http://www.w3.org/2000/svg';
-    const g = document.createElementNS(svgNS, 'g');
-    g.setAttribute('class', 'connection-group');
-
-    // SVG is offset by 4000px to allow negative coords
-    const SVG_OFFSET = 4000;
-    const x1 = source.x + SVG_OFFSET, y1 = source.y + SVG_OFFSET;
-    const x2 = target.x + SVG_OFFSET, y2 = target.y + SVG_OFFSET;
-
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    let pathD, isCubic = false;
-    let qcx, qcy;          // quadratic control point
-    let cx1, cy1, cx2, cy2; // cubic control points
-
-    if (Math.abs(dy) > 50) {
-      // Vertical flow: tight S-curve that hugs source/target
-      // Tighter control points avoid crossing intermediate content rows
-      isCubic = true;
-      const tension = Math.min(100, Math.abs(dy) * 0.2);
-      cx1 = x1; cy1 = y1 + tension;
-      cx2 = x2; cy2 = y2 - tension;
-      pathD = `M ${x1} ${y1} C ${cx1} ${cy1} ${cx2} ${cy2} ${x2} ${y2}`;
-    } else {
-      // Horizontal or near-horizontal: perpendicular offset curve
-      const offset = dist * 0.15;
-      const safeDist = dist || 1;
-      qcx = (x1 + x2) / 2 + (-dy / safeDist) * offset;
-      qcy = (y1 + y2) / 2 + (dx / safeDist) * offset;
-      pathD = `M ${x1} ${y1} Q ${qcx} ${qcy} ${x2} ${y2}`;
-    }
-
-    const path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('d', pathD);
-    path.setAttribute('class', 'connection-path');
-    path.setAttribute('fill', 'none');
-
-    // Animate the stroke drawing
-    const pathLength = dist * 1.2;
-    path.style.strokeDasharray = pathLength;
-    path.style.strokeDashoffset = pathLength;
-
-    g.appendChild(path);
-
-    // Label near target (75% along curve) to avoid overlapping intermediate rows
-    if (conn.title) {
-      const lt = 0.75;
-      let lx, ly;
-      if (isCubic) {
-        const mt = 1 - lt;
-        lx = mt*mt*mt*x1 + 3*mt*mt*lt*cx1 + 3*mt*lt*lt*cx2 + lt*lt*lt*x2;
-        ly = mt*mt*mt*y1 + 3*mt*mt*lt*cy1 + 3*mt*lt*lt*cy2 + lt*lt*lt*y2;
-      } else {
-        lx = (1-lt)*(1-lt)*x1 + 2*(1-lt)*lt*qcx + lt*lt*x2;
-        ly = (1-lt)*(1-lt)*y1 + 2*(1-lt)*lt*qcy + lt*lt*y2;
-      }
-      const label = document.createElementNS(svgNS, 'text');
-      label.setAttribute('x', lx + 10);
-      label.setAttribute('y', ly - 6);
-      label.setAttribute('class', 'connection-label');
-      label.setAttribute('text-anchor', 'start');
-      label.textContent = conn.title;
-      g.appendChild(label);
-    }
-
-    // Step dots along the path
-    if (conn.steps && conn.steps.length > 0) {
-      const stepCount = conn.steps.length;
-      for (let i = 0; i < stepCount; i++) {
-        const t = (i + 1) / (stepCount + 1);
-        let px, py;
-
-        if (isCubic) {
-          // Cubic bezier interpolation
-          const mt = 1 - t;
-          px = mt*mt*mt*x1 + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*x2;
-          py = mt*mt*mt*y1 + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*y2;
-        } else {
-          // Quadratic bezier interpolation
-          px = (1-t)*(1-t)*x1 + 2*(1-t)*t*qcx + t*t*x2;
-          py = (1-t)*(1-t)*y1 + 2*(1-t)*t*qcy + t*t*y2;
-        }
-
-        const dot = document.createElementNS(svgNS, 'circle');
-        dot.setAttribute('cx', px);
-        dot.setAttribute('cy', py);
-        dot.setAttribute('r', '4');
-        dot.setAttribute('class', 'connection-dot');
-        g.appendChild(dot);
-      }
-    }
-
-    svgLayer.appendChild(g);
-    conn.el = g;
-
-    // Trigger the draw animation
     requestAnimationFrame(() => {
-      path.style.transition = 'stroke-dashoffset 1s ease-out';
-      path.style.strokeDashoffset = '0';
+      el.style.transition = 'opacity 0.4s ease, transform 0.4s cubic-bezier(0.16,1,0.3,1)';
+      el.style.opacity = '1';
+      el.style.transform = 'scale(1)';
     });
+
+    return entry;
   }
 
-  function updateAllConnections() {
-    for (const conn of connections) {
-      renderConnection(conn);
-    }
+  function addToSection(sectionId, element) {
+    const section = sections.get(sectionId);
+    if (!section) return;
+    section.bodyEl.appendChild(element);
+  }
+
+  // --- Getters ---
+  function getBlock(id) {
+    return blocks.get(id);
+  }
+
+  function getSection(id) {
+    return sections.get(id);
+  }
+
+  function getBlockCount() {
+    return blocks.size + sections.size;
   }
 
   // --- Camera ---
@@ -342,26 +190,25 @@ const CanvasEngine = (() => {
   }
 
   function zoomToFit(padding = 80) {
-    if (blocks.size === 0) return;
+    const elements = world.querySelectorAll('.canvas-block, .canvas-section');
+    if (elements.length === 0) return;
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    // Use ring-aware size estimates for accurate bounds
-    const RING_HALF_W = [200, 90, 150, 140, 260];
-    const RING_HALF_H = [130, 60, 110, 100, 220];
-    for (const b of blocks.values()) {
-      const hw = RING_HALF_W[b.ring] || 150;
-      const hh = RING_HALF_H[b.ring] || 100;
-      minX = Math.min(minX, b.x - hw);
-      maxX = Math.max(maxX, b.x + hw);
-      minY = Math.min(minY, b.y - hh);
-      maxY = Math.max(maxY, b.y + hh);
+    for (const el of elements) {
+      const x = parseFloat(el.style.left) || 0;
+      const y = parseFloat(el.style.top) || 0;
+      const w = el.offsetWidth || 300;
+      const h = el.offsetHeight || 200;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x + w);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y + h);
     }
 
     recalcCenter();
-    // Account for action drawer (380px right) and narrative panel (left)
     const drawerOpen = document.querySelector('.action-drawer.open');
     const availW = viewport.clientWidth - (drawerOpen ? 380 : 0);
-    const availH = viewport.clientHeight - 130; // bottom input bar + gradient
+    const availH = viewport.clientHeight - 130;
 
     const contentW = maxX - minX + padding * 2;
     const contentH = maxY - minY + padding * 2;
@@ -371,9 +218,8 @@ const CanvasEngine = (() => {
 
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
-    // Shift center leftward to account for drawer
-    const effectiveCenterX = (drawerOpen ? (availW / 2) : worldCenter.x);
-    const effectiveCenterY = worldCenter.y - 20; // nudge up for input bar
+    const effectiveCenterX = drawerOpen ? (availW / 2) : worldCenter.x;
+    const effectiveCenterY = worldCenter.y - 20;
     const targetX = effectiveCenterX - cx * newScale;
     const targetY = effectiveCenterY - cy * newScale;
 
@@ -381,12 +227,20 @@ const CanvasEngine = (() => {
   }
 
   function focusOn(id, scale) {
-    const b = blocks.get(id);
-    if (!b) return;
+    const entry = blocks.get(id) || sections.get(id);
+    if (!entry) return;
+    const el = entry.el;
+    const x = parseFloat(el.style.left) || 0;
+    const y = parseFloat(el.style.top) || 0;
+    const w = el.offsetWidth || 300;
+    const h = el.offsetHeight || 200;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+
     const targetScale = scale || Math.max(0.8, transform.scale);
     recalcCenter();
-    const targetX = worldCenter.x - b.x * targetScale;
-    const targetY = worldCenter.y - b.y * targetScale;
+    const targetX = worldCenter.x - cx * targetScale;
+    const targetY = worldCenter.y - cy * targetScale;
     animateTransform(targetX, targetY, targetScale);
   }
 
@@ -401,7 +255,6 @@ const CanvasEngine = (() => {
     function step(now) {
       const elapsed = now - startTime;
       const t = Math.min(1, elapsed / duration);
-      // Ease out cubic
       const ease = 1 - Math.pow(1 - t, 3);
 
       transform.x = startX + (targetX - startX) * ease;
@@ -420,22 +273,12 @@ const CanvasEngine = (() => {
 
   // --- Reset ---
   function reset() {
-    // Remove all blocks
-    for (const b of blocks.values()) {
-      b.el.remove();
-    }
+    for (const b of blocks.values()) b.el.remove();
     blocks.clear();
 
-    // Remove all connections
-    for (const c of connections) {
-      if (c.el) c.el.remove();
-    }
-    connections.length = 0;
+    for (const s of sections.values()) s.el.remove();
+    sections.clear();
 
-    // Clear SVG
-    while (svgLayer.firstChild) svgLayer.firstChild.remove();
-
-    // Reset camera
     recalcCenter();
     transform.x = worldCenter.x;
     transform.y = worldCenter.y;
@@ -443,25 +286,19 @@ const CanvasEngine = (() => {
     applyTransform();
   }
 
-  // --- Getters ---
-  function getBlock(id) {
-    return blocks.get(id);
-  }
-
-  function getBlockCount() {
-    return blocks.size;
-  }
-
   return {
     init,
     addBlock,
-    addConnection,
+    addSection,
+    addToSection,
+    getBlock,
+    getSection,
+    getBlockCount,
     panTo,
     zoomToFit,
     focusOn,
     reset,
-    getBlock,
-    getBlockCount
+    BRICK
   };
 
 })();

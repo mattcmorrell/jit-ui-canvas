@@ -1,10 +1,9 @@
-// app.js — Spatial canvas: SSE consumption, block placement on radial canvas
+// app.js — Brick grid canvas: SSE consumption, section-based placement
 
 (() => {
   // --- DOM refs ---
   const viewport = document.getElementById('viewport');
   const world = document.getElementById('world');
-  const svgLayer = document.getElementById('svg-connections');
   const emptyState = document.getElementById('empty-state');
   const chatInput = document.getElementById('chat-input');
   const sendBtn = document.getElementById('send-btn');
@@ -22,7 +21,6 @@
   let conversationId = null;
   let isStreaming = false;
   let blockCounter = 0;
-  let metricCounter = 0;
   let personCardId = null;
   let narrativeQueue = [];
   let narrativeTimer = null;
@@ -30,7 +28,7 @@
   let actionDrawerOpen = false;
 
   // --- Init canvas engine ---
-  CanvasEngine.init(viewport, world, svgLayer);
+  CanvasEngine.init(viewport, world);
 
   // --- Extract person name from query for instant placeholder ---
   function extractPersonName(query) {
@@ -147,8 +145,11 @@
     CanvasEngine.reset();
     hideCenterPlaceholder();
     blockCounter = 0;
-    metricCounter = 0;
     personCardId = null;
+    impactCount = 0;
+    cascadeCount = 0;
+    nextRowLeft = 0;
+    nextRowRight = 0;
     narrativePanel.style.display = 'none';
     narrativePanel.classList.remove('visible');
     actionDrawer.classList.remove('open');
@@ -209,7 +210,50 @@
     };
   }
 
-  // --- Place block spatially ---
+  // --- Place block on brick grid ---
+  // Layout uses two columns with dynamic row placement to prevent overlap.
+  // Col 0 = left column (person, cascades)
+  // Col 5 = right column (impacts, relationship map)
+  // Rows are computed from actual rendered heights so nothing overlaps.
+
+  let impactCount = 0;
+  let cascadeCount = 0;
+  const BRICK = CanvasEngine.BRICK;
+
+  // Track the next available row for each column
+  let nextRowLeft = 0;   // column 0
+  let nextRowRight = 0;  // column 5
+
+  function bricksForPx(px) {
+    return Math.ceil(px / BRICK) + 1; // +1 brick gap between sections
+  }
+
+  // Measure element height and advance the row tracker for a column.
+  // Uses setTimeout(0) to let the DOM settle, but also does a sync
+  // fallback estimate so the next block placement is safe.
+  function advanceRow(column, el) {
+    const top = parseFloat(el.style.top) || 0;
+    // Sync estimate: use scrollHeight or fallback
+    const h = el.scrollHeight || el.offsetHeight || 300;
+    const rows = bricksForPx(h);
+    const startRow = Math.ceil(top / BRICK);
+    if (column === 0) {
+      nextRowLeft = Math.max(nextRowLeft, startRow + rows);
+    } else {
+      nextRowRight = Math.max(nextRowRight, startRow + rows);
+    }
+    // Also re-measure after paint in case content expanded
+    setTimeout(() => {
+      const h2 = el.scrollHeight || el.offsetHeight || 300;
+      const rows2 = bricksForPx(h2);
+      if (column === 0) {
+        nextRowLeft = Math.max(nextRowLeft, startRow + rows2);
+      } else {
+        nextRowRight = Math.max(nextRowRight, startRow + rows2);
+      }
+    }, 50);
+  }
+
   function placeBlock(block) {
     const type = block.type;
     const id = `block-${blockCounter++}`;
@@ -220,50 +264,53 @@
         hideCenterPlaceholder();
         const el = Primitives.renderPersonCardHero(block, handleFollowUp);
         personCardId = id;
-        CanvasEngine.addBlock(id, el, 0);
+        CanvasEngine.addBlock(id, el, 0, nextRowLeft);
+        advanceRow(0, el);
         CanvasEngine.focusOn(id, 1);
         break;
       }
 
       case 'metric_row': {
-        // Decompose into individual metric cards on ring 1
+        // Render metrics as chips inside the person card
         const d = block.data || block;
         const metrics = d.metrics || [];
-        for (let i = 0; i < metrics.length; i++) {
-          const metricId = `metric-${metricCounter++}`;
-          const el = Primitives.renderSingleMetric(metrics[i]);
-          setTimeout(() => {
-            CanvasEngine.addBlock(metricId, el, 1);
-          }, i * 200);
+        const chips = Primitives.renderMetricChips(metrics);
+        if (chips && personCardId) {
+          const personEntry = CanvasEngine.getBlock(personCardId);
+          if (personEntry) {
+            const personCard = personEntry.el.querySelector('.person-card');
+            if (personCard) {
+              personCard.appendChild(chips);
+              // Re-measure person card since it grew
+              advanceRow(0, personEntry.el);
+            }
+          }
         }
         break;
       }
 
       case 'impact_card': {
-        const d = block.data || block;
-        const severity = d.severity || 'medium';
-        const el = Primitives.render(block, handleFollowUp);
-        el.classList.add(`severity-${severity}`);
-        CanvasEngine.addBlock(id, el, 2, { severity });
-
-        // Draw connection from person card to this impact
-        if (personCardId) {
-          const title = d.title || '';
-          CanvasEngine.addConnection(personCardId, id, [], title);
+        if (!CanvasEngine.getSection('impacts')) {
+          CanvasEngine.addSection('impacts', 5, nextRowRight, 'Key Impacts');
         }
+        const el = Primitives.render(block, handleFollowUp);
+        CanvasEngine.addToSection('impacts', el);
+        impactCount++;
+        // Re-measure section after each card added
+        const sec = CanvasEngine.getSection('impacts');
+        if (sec) advanceRow(5, sec.el);
         break;
       }
 
       case 'cascade_path': {
-        // Place cascade path cards on ring 3
-        const d = block.data || block;
-        const el = Primitives.render(block, handleFollowUp);
-        el.classList.add('cascade-block');
-        CanvasEngine.addBlock(id, el, 3);
-
-        if (personCardId) {
-          CanvasEngine.addConnection(personCardId, id, d.steps || [], d.title || '');
+        if (!CanvasEngine.getSection('cascades')) {
+          CanvasEngine.addSection('cascades', 0, nextRowLeft, 'How It Connects');
         }
+        const el = Primitives.render(block, handleFollowUp);
+        CanvasEngine.addToSection('cascades', el);
+        cascadeCount++;
+        const sec = CanvasEngine.getSection('cascades');
+        if (sec) advanceRow(0, sec.el);
         break;
       }
 
@@ -278,14 +325,19 @@
       }
 
       case 'relationship_map': {
+        if (!CanvasEngine.getSection('map')) {
+          CanvasEngine.addSection('map', 5, nextRowRight, 'Organizational Footprint');
+        }
         const el = Primitives.render(block, handleFollowUp);
-        CanvasEngine.addBlock(id, el, 4);
+        CanvasEngine.addToSection('map', el);
+        const sec = CanvasEngine.getSection('map');
+        if (sec) advanceRow(5, sec.el);
         break;
       }
 
       default: {
         const el = Primitives.render(block, handleFollowUp);
-        if (el) CanvasEngine.addBlock(id, el, 2);
+        if (el) CanvasEngine.addBlock(id, el, 0, nextRowLeft);
         break;
       }
     }
