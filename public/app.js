@@ -1,6 +1,9 @@
 // app.js — Brick grid canvas: SSE consumption, section-based placement
 
 (() => {
+  // --- Raw mode: ?raw in URL shows plain JSON instead of rendered primitives ---
+  const RAW_MODE = new URLSearchParams(window.location.search).has('raw');
+
   // --- DOM refs ---
   const viewport = document.getElementById('viewport');
   const world = document.getElementById('world');
@@ -254,11 +257,113 @@
     }, 50);
   }
 
+  // --- Raw block renderer (for ?raw mode) ---
+  // Renders clean readable cards without the full styled primitives.
+  // Charts still render as charts. Other blocks get a minimal text layout.
+  function renderRawBlock(block) {
+    const el = document.createElement('div');
+    el.className = 'raw-block';
+    const type = block.type;
+    const d = block.data || block;
+
+    // Charts render normally — they're already data-driven visuals
+    if (type === 'chart' || type === 'custom_visual') {
+      return Primitives.renderChart(block);
+    }
+
+    switch (type) {
+      case 'person_card': {
+        el.innerHTML = `
+          <div class="raw-block-type">person</div>
+          <div class="raw-title">${d.name}</div>
+          <div class="raw-subtitle">${d.role || ''} · ${d.level || ''} · ${d.teamName || ''}</div>
+          <div class="raw-meta">${d.location || ''} · Since ${d.startDate || '?'} · Manager: ${d.managerName || '?'}</div>
+          <div class="raw-meta">${d.directReportCount || 0} reports · ${d.projectCount || 0} projects</div>`;
+        break;
+      }
+      case 'metric_row': {
+        const metrics = d.metrics || [];
+        el.innerHTML = `<div class="raw-block-type">metrics</div>` +
+          metrics.map(m => `<div class="raw-metric"><span class="raw-metric-val">${m.value}</span> ${m.label}${m.context ? ` — ${m.context}` : ''}</div>`).join('');
+        break;
+      }
+      case 'impact_card': {
+        const sev = d.severity || 'medium';
+        const people = (d.affectedPeople || []).map(p => p.name).join(', ');
+        el.innerHTML = `
+          <div class="raw-block-type">${sev} impact</div>
+          <div class="raw-title">${d.title || ''}</div>
+          <div class="raw-body">${d.description || ''}</div>
+          ${people ? `<div class="raw-meta">Affects: ${people}</div>` : ''}`;
+        el.classList.add(`raw-severity-${sev}`);
+        break;
+      }
+      case 'cascade_path': {
+        const steps = d.steps || [];
+        el.innerHTML = `<div class="raw-block-type">cascade</div>
+          <div class="raw-title">${d.title || ''}</div>
+          <div class="raw-cascade">${steps.map(s =>
+            s.edge ? `<span class="raw-edge">→ ${s.label}</span>`
+                   : `<span class="raw-node">${s.label}</span><span class="raw-node-detail">${s.detail || ''}</span>`
+          ).join(' ')}</div>`;
+        break;
+      }
+      case 'relationship_map': {
+        const nodeCount = (d.nodes || []).length;
+        const edgeCount = (d.edges || []).length;
+        el.innerHTML = `<div class="raw-block-type">relationship map</div>
+          <div class="raw-title">${d.title || ''}</div>
+          <div class="raw-meta">${nodeCount} nodes · ${edgeCount} edges</div>
+          <div class="raw-body">${(d.nodes || []).map(n => `${n.label}${n.highlight ? ' ★' : ''}`).join(', ')}</div>`;
+        break;
+      }
+      default: {
+        el.innerHTML = `<div class="raw-block-type">${type}</div><div class="raw-body">${d.content || d.title || JSON.stringify(d).substring(0, 300)}</div>`;
+      }
+    }
+    return el;
+  }
+
   function placeBlock(block) {
     console.log('placeBlock:', block.type, block);
     const type = block.type;
     const id = `block-${blockCounter++}`;
 
+    // --- RAW MODE: minimal text + real charts, no styled primitives ---
+    if (RAW_MODE) {
+      hideCenterPlaceholder();
+      if (type === 'narrative') {
+        showNarrative(block);
+        return;
+      }
+      if (type === 'action_list') {
+        showActionDrawer(block);
+        return;
+      }
+      // Charts get their own section like normal mode
+      if (type === 'chart' || type === 'custom_visual') {
+        const d = block.data || block;
+        const vizTitle = d.title || 'Insight';
+        const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
+        const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
+        const vizId = `viz-${id}`;
+        CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);
+        const el = Primitives.renderChart(block);
+        CanvasEngine.addToSection(vizId, el);
+        const vizSec = CanvasEngine.getSection(vizId);
+        if (vizSec) advanceRow(vizCol, vizSec.el);
+        return;
+      }
+      const col = nextRowLeft <= nextRowRight ? 0 : 5;
+      const row = col === 0 ? nextRowLeft : nextRowRight;
+      const el = renderRawBlock(block);
+      CanvasEngine.addBlock(id, el, col, row);
+      advanceRow(col, el);
+      if (blockCounter === 1) CanvasEngine.focusOn(id, 1);
+      return;
+    }
+
+    // --- NORMAL MODE: styled primitives ---
     switch (type) {
 
       case 'person_card': {

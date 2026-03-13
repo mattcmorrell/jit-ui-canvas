@@ -401,6 +401,80 @@ body {
   color: var(--text-muted);
 }
 
+/* --- Raw mode blocks --- */
+.raw-block {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  max-width: 520px;
+  margin-bottom: 8px;
+}
+.raw-block-type {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-purple);
+  margin-bottom: 8px;
+}
+.raw-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.raw-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.raw-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.raw-body {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.raw-metric {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.raw-metric-val {
+  font-weight: 700;
+  color: var(--accent-purple);
+  font-size: 1rem;
+  margin-right: 6px;
+}
+.raw-cascade {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  margin-top: 6px;
+}
+.raw-edge {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.raw-node {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.raw-node-detail {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+.raw-severity-critical { border-left: 3px solid var(--accent-red); }
+.raw-severity-high { border-left: 3px solid var(--accent-orange); }
+.raw-severity-medium { border-left: 3px solid var(--accent-yellow); }
+.raw-severity-low { border-left: 3px solid var(--accent-blue); }
+
 /* --- Center Placeholder --- */
 .center-placeholder {
   position: absolute;
