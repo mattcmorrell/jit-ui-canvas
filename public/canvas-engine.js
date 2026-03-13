@@ -1,19 +1,33 @@
-// canvas-engine.js — Spatial layout engine for JIT-UI canvas
-// Pan/zoom, ring-based radial placement, SVG connections, camera control
+// canvas-engine.js — Grid-based spatial layout engine for JIT-UI canvas
+// Structured row layout, pan/zoom, SVG connections, camera control
 
 const CanvasEngine = (() => {
 
-  // --- Config ---
-  const RING_RADII = [0, 300, 600, 880, 1100];
+  // --- Grid Config ---
+  const GRID_SIZE = 200;     // Visual grid dot spacing (px)
   const MIN_SCALE = 0.3;
   const MAX_SCALE = 2.0;
   const TRANSITION_MS = 600;
-  const NUDGE_DISTANCE = 40;
+
+  // Row layout configuration per ring index
+  // y: vertical center of this row (world coords, person at origin)
+  // cardW: estimated card width for spacing calculation
+  // gap: horizontal gap between cards in the row
+  // rowGap: vertical offset when a row wraps to a second line
+  const ROW_CONFIG = [
+    { y: 0,    cardW: 360, gap: 0,  rowGap: 0   },   // Ring 0: Person (centered)
+    { y: 300,  cardW: 150, gap: 50, rowGap: 120  },   // Ring 1: Metrics
+    { y: 600,  cardW: 260, gap: 60, rowGap: 200  },   // Ring 2: Impacts
+    { y: 940,  cardW: 240, gap: 60, rowGap: 180  },   // Ring 3: Cascades
+    { y: 1300, cardW: 480, gap: 80, rowGap: 440  },   // Ring 4: Rel Maps
+  ];
+
+  const MAX_ROW_WIDTH = 1800; // Wrap to next line if row exceeds this
 
   // --- State ---
   let viewport, world, svgLayer;
   let transform = { x: 0, y: 0, scale: 1 };
-  let blocks = new Map(); // id → { el, ring, angle, x, y }
+  let blocks = new Map(); // id → { el, ring, x, y, metadata }
   let connections = [];
   let isPanning = false;
   let panStart = { x: 0, y: 0 };
@@ -33,6 +47,9 @@ const CanvasEngine = (() => {
     transform.y = worldCenter.y;
     applyTransform();
 
+    // Create visual grid layer
+    createGridLayer();
+
     // Mouse/trackpad events
     viewport.addEventListener('pointerdown', onPointerDown);
     viewport.addEventListener('pointermove', onPointerMove);
@@ -43,6 +60,12 @@ const CanvasEngine = (() => {
     window.addEventListener('resize', recalcCenter);
   }
 
+  function createGridLayer() {
+    const grid = document.createElement('div');
+    grid.className = 'grid-layer';
+    world.insertBefore(grid, world.firstChild);
+  }
+
   function recalcCenter() {
     if (!viewport) return;
     worldCenter.x = viewport.clientWidth / 2;
@@ -51,7 +74,6 @@ const CanvasEngine = (() => {
 
   // --- Pan/Zoom ---
   function onPointerDown(e) {
-    // Ignore if clicking on interactive elements
     if (e.target.closest('.spatial-block, .narrative-panel, .action-drawer, .input-bar-wrapper, .empty-state, .suggestion-chip, button, a, input')) return;
     isPanning = true;
     panStart.x = e.clientX;
@@ -102,16 +124,16 @@ const CanvasEngine = (() => {
     element.dataset.blockId = id;
     element.dataset.ring = ring;
 
-    // Start slightly inward and transparent for animation
+    // Start slightly scaled down and transparent for animation
     element.style.opacity = '0';
     element.style.transform = 'translate(-50%, -50%) scale(0.85)';
 
     world.appendChild(element);
 
-    const entry = { el: element, ring, metadata, x: 0, y: 0, angle: 0 };
+    const entry = { el: element, ring, metadata, x: 0, y: 0 };
     blocks.set(id, entry);
 
-    // Recalculate positions for all blocks on this ring
+    // Recalculate positions for all blocks on this row
     redistributeRing(ring);
 
     // Animate in after position is set
@@ -128,64 +150,47 @@ const CanvasEngine = (() => {
   }
 
   function redistributeRing(ring) {
-    const ringBlocks = [...blocks.values()].filter(b => b.ring === ring);
+    let ringBlocks = [...blocks.values()].filter(b => b.ring === ring);
     const count = ringBlocks.length;
     if (count === 0) return;
 
-    const radius = RING_RADII[ring] || ring * 240;
+    const config = ROW_CONFIG[ring] || {
+      y: ring * 300,
+      cardW: 260,
+      gap: 60,
+      rowGap: 200
+    };
 
+    // Ring 0: person card always at origin
     if (ring === 0) {
-      // Center block — always at origin
       for (const b of ringBlocks) {
         b.x = 0;
         b.y = 0;
-        b.angle = 0;
         positionElement(b);
       }
       return;
     }
 
-    // Distribute evenly around the ring
-    // Start from top (-90°) and go clockwise
-    const startAngle = -Math.PI / 2;
-    const angleStep = (2 * Math.PI) / count;
+    // Sort impact cards by severity (most critical leftmost)
+    if (ring === 2) {
+      const order = { critical: 0, high: 1, medium: 2, low: 3 };
+      ringBlocks.sort((a, b) =>
+        (order[a.metadata?.severity] ?? 2) - (order[b.metadata?.severity] ?? 2)
+      );
+    }
+
+    const step = config.cardW + config.gap;
+    const maxPerRow = Math.max(1, Math.floor((MAX_ROW_WIDTH + config.gap) / step));
 
     for (let i = 0; i < count; i++) {
+      const rowIdx = Math.floor(i / maxPerRow);
+      const colIdx = i % maxPerRow;
+      const countInRow = Math.min(maxPerRow, count - rowIdx * maxPerRow);
+
       const b = ringBlocks[i];
-      b.angle = startAngle + i * angleStep;
-      b.x = Math.cos(b.angle) * radius;
-      b.y = Math.sin(b.angle) * radius;
-    }
-
-    // Collision avoidance — nudge overlapping blocks outward
-    resolveCollisions(ringBlocks, radius);
-
-    for (const b of ringBlocks) {
+      b.x = (colIdx - (countInRow - 1) / 2) * step;
+      b.y = config.y + rowIdx * config.rowGap;
       positionElement(b);
-    }
-  }
-
-  function resolveCollisions(ringBlocks, baseRadius) {
-    const MIN_DIST = 300;
-    for (let pass = 0; pass < 5; pass++) {
-      for (let i = 0; i < ringBlocks.length; i++) {
-        for (let j = i + 1; j < ringBlocks.length; j++) {
-          const a = ringBlocks[i];
-          const b = ringBlocks[j];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < MIN_DIST && dist > 0) {
-            const push = (MIN_DIST - dist) / 2;
-            const nx = dx / dist;
-            const ny = dy / dist;
-            a.x -= nx * push;
-            a.y -= ny * push;
-            b.x += nx * push;
-            b.y += ny * push;
-          }
-        }
-      }
     }
   }
 
@@ -220,37 +225,60 @@ const CanvasEngine = (() => {
     const x1 = source.x + SVG_OFFSET, y1 = source.y + SVG_OFFSET;
     const x2 = target.x + SVG_OFFSET, y2 = target.y + SVG_OFFSET;
 
-    // Compute a control point for a gentle curve
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
     const dx = x2 - x1;
     const dy = y2 - y1;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Perpendicular offset for curve
-    const offset = dist * 0.15;
-    const cx = mx + (-dy / dist) * offset;
-    const cy = my + (dx / dist) * offset;
+
+    let pathD, isCubic = false;
+    let qcx, qcy;          // quadratic control point
+    let cx1, cy1, cx2, cy2; // cubic control points
+
+    if (Math.abs(dy) > 50) {
+      // Vertical flow: tight S-curve that hugs source/target
+      // Tighter control points avoid crossing intermediate content rows
+      isCubic = true;
+      const tension = Math.min(100, Math.abs(dy) * 0.2);
+      cx1 = x1; cy1 = y1 + tension;
+      cx2 = x2; cy2 = y2 - tension;
+      pathD = `M ${x1} ${y1} C ${cx1} ${cy1} ${cx2} ${cy2} ${x2} ${y2}`;
+    } else {
+      // Horizontal or near-horizontal: perpendicular offset curve
+      const offset = dist * 0.15;
+      const safeDist = dist || 1;
+      qcx = (x1 + x2) / 2 + (-dy / safeDist) * offset;
+      qcy = (y1 + y2) / 2 + (dx / safeDist) * offset;
+      pathD = `M ${x1} ${y1} Q ${qcx} ${qcy} ${x2} ${y2}`;
+    }
 
     const path = document.createElementNS(svgNS, 'path');
-    const d = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
-    path.setAttribute('d', d);
+    path.setAttribute('d', pathD);
     path.setAttribute('class', 'connection-path');
     path.setAttribute('fill', 'none');
 
     // Animate the stroke drawing
-    const pathLength = dist * 1.2; // approximate
+    const pathLength = dist * 1.2;
     path.style.strokeDasharray = pathLength;
     path.style.strokeDashoffset = pathLength;
 
     g.appendChild(path);
 
-    // Label at midpoint
+    // Label near target (75% along curve) to avoid overlapping intermediate rows
     if (conn.title) {
+      const lt = 0.75;
+      let lx, ly;
+      if (isCubic) {
+        const mt = 1 - lt;
+        lx = mt*mt*mt*x1 + 3*mt*mt*lt*cx1 + 3*mt*lt*lt*cx2 + lt*lt*lt*x2;
+        ly = mt*mt*mt*y1 + 3*mt*mt*lt*cy1 + 3*mt*lt*lt*cy2 + lt*lt*lt*y2;
+      } else {
+        lx = (1-lt)*(1-lt)*x1 + 2*(1-lt)*lt*qcx + lt*lt*x2;
+        ly = (1-lt)*(1-lt)*y1 + 2*(1-lt)*lt*qcy + lt*lt*y2;
+      }
       const label = document.createElementNS(svgNS, 'text');
-      label.setAttribute('x', cx);
-      label.setAttribute('y', cy - 8);
+      label.setAttribute('x', lx + 10);
+      label.setAttribute('y', ly - 6);
       label.setAttribute('class', 'connection-label');
-      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('text-anchor', 'start');
       label.textContent = conn.title;
       g.appendChild(label);
     }
@@ -260,9 +288,18 @@ const CanvasEngine = (() => {
       const stepCount = conn.steps.length;
       for (let i = 0; i < stepCount; i++) {
         const t = (i + 1) / (stepCount + 1);
-        // Quadratic bezier point
-        const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * cx + t * t * x2;
-        const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * cy + t * t * y2;
+        let px, py;
+
+        if (isCubic) {
+          // Cubic bezier interpolation
+          const mt = 1 - t;
+          px = mt*mt*mt*x1 + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*x2;
+          py = mt*mt*mt*y1 + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*y2;
+        } else {
+          // Quadratic bezier interpolation
+          px = (1-t)*(1-t)*x1 + 2*(1-t)*t*qcx + t*t*x2;
+          py = (1-t)*(1-t)*y1 + 2*(1-t)*t*qcy + t*t*y2;
+        }
 
         const dot = document.createElementNS(svgNS, 'circle');
         dot.setAttribute('cx', px);
@@ -308,18 +345,23 @@ const CanvasEngine = (() => {
     if (blocks.size === 0) return;
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    // Use ring-aware size estimates for accurate bounds
+    const RING_HALF_W = [200, 90, 150, 140, 260];
+    const RING_HALF_H = [130, 60, 110, 100, 220];
     for (const b of blocks.values()) {
-      minX = Math.min(minX, b.x - 180);
-      maxX = Math.max(maxX, b.x + 180);
-      minY = Math.min(minY, b.y - 100);
-      maxY = Math.max(maxY, b.y + 100);
+      const hw = RING_HALF_W[b.ring] || 150;
+      const hh = RING_HALF_H[b.ring] || 100;
+      minX = Math.min(minX, b.x - hw);
+      maxX = Math.max(maxX, b.x + hw);
+      minY = Math.min(minY, b.y - hh);
+      maxY = Math.max(maxY, b.y + hh);
     }
 
     recalcCenter();
     // Account for action drawer (380px right) and narrative panel (left)
     const drawerOpen = document.querySelector('.action-drawer.open');
     const availW = viewport.clientWidth - (drawerOpen ? 380 : 0);
-    const availH = viewport.clientHeight - 80; // bottom input bar
+    const availH = viewport.clientHeight - 130; // bottom input bar + gradient
 
     const contentW = maxX - minX + padding * 2;
     const contentH = maxY - minY + padding * 2;

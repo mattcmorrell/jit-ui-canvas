@@ -30,6 +30,7 @@
   --agent-accent: #b388ff;
   --agent-accent-dim: rgba(179,136,255,0.10);
   --agent-glow: rgba(179,136,255,0.25);
+  --grid-dot: rgba(255,255,255,0.04);
 }
 
 [data-theme="light"] {
@@ -59,6 +60,7 @@
   --agent-accent: #7c4dff;
   --agent-accent-dim: rgba(124,77,255,0.08);
   --agent-glow: rgba(124,77,255,0.2);
+  --grid-dot: rgba(0,0,0,0.04);
 }
 
 html { font-size: 15px; }
@@ -169,6 +171,19 @@ body {
   will-change: transform;
 }
 
+/* --- Grid Layer (visual dot grid behind content) --- */
+.grid-layer {
+  position: absolute;
+  top: -4000px;
+  left: -4000px;
+  width: 8000px;
+  height: 8000px;
+  pointer-events: none;
+  z-index: 1;
+  background-image: radial-gradient(circle, var(--grid-dot) 1.2px, transparent 1.2px);
+  background-size: 200px 200px;
+}
+
 #svg-connections {
   position: absolute;
   top: -4000px;
@@ -177,6 +192,7 @@ body {
   height: 8000px;
   pointer-events: none;
   overflow: visible;
+  z-index: 5;
 }
 
 /* --- Spatial Blocks --- */
@@ -214,17 +230,18 @@ body {
 /* --- SVG Connections --- */
 .connection-path {
   stroke: var(--accent-purple);
-  stroke-width: 2;
-  opacity: 0.5;
+  stroke-width: 1.5;
+  opacity: 0.3;
 }
 .connection-label {
   fill: var(--text-muted);
-  font-size: 10px;
+  font-size: 9px;
   font-family: 'Inter', sans-serif;
+  opacity: 0.5;
 }
 .connection-dot {
   fill: var(--accent-purple);
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 /* --- Center Placeholder --- */
