@@ -255,6 +255,7 @@
   }
 
   function placeBlock(block) {
+    console.log('placeBlock:', block.type, block);
     const type = block.type;
     const id = `block-${blockCounter++}`;
 
@@ -332,6 +333,22 @@
         CanvasEngine.addToSection('map', el);
         const sec = CanvasEngine.getSection('map');
         if (sec) advanceRow(5, sec.el);
+        break;
+      }
+
+      case 'chart':
+      case 'custom_visual': {
+        // Data visualization — place in whichever column has more room
+        const d = block.data || block;
+        const vizTitle = d.title || 'Insight';
+        const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
+        const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
+        const vizId = `viz-${id}`;
+        CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);
+        const el = Primitives.render(block, handleFollowUp);
+        CanvasEngine.addToSection(vizId, el);
+        const vizSec = CanvasEngine.getSection(vizId);
+        if (vizSec) advanceRow(vizCol, vizSec.el);
         break;
       }
 

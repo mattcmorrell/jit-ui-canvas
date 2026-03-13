@@ -341,6 +341,86 @@ function get_impact_radius(person_id) {
   };
 }
 
+function get_org_stats(stat_type) {
+  const people = nodesByType['person'] || [];
+
+  switch (stat_type) {
+    case 'managers_by_reports': {
+      // Find all people who have direct reports (inbound reports_to edges)
+      const managers = [];
+      for (const p of people) {
+        const reportEdges = (edgesByTarget[p.id] || []).filter(e => e.type === 'reports_to');
+        if (reportEdges.length > 0) {
+          const teamEdge = (edgesBySource[p.id] || []).find(e => e.type === 'member_of');
+          const team = teamEdge ? nodesById[teamEdge.target] : null;
+          managers.push({
+            ...nodeSummary(p),
+            directReportCount: reportEdges.length,
+            teamName: team ? team.properties.name || team.properties.title : null
+          });
+        }
+      }
+      managers.sort((a, b) => b.directReportCount - a.directReportCount);
+      return { stat: 'managers_by_reports', managers: managers.slice(0, 15), totalManagers: managers.length };
+    }
+
+    case 'team_sizes': {
+      const teams = nodesByType['team'] || [];
+      const result = teams.map(t => {
+        const memberEdges = (edgesByTarget[t.id] || []).filter(e => e.type === 'member_of');
+        return { ...nodeSummary(t), memberCount: memberEdges.length };
+      }).sort((a, b) => b.memberCount - a.memberCount);
+      return { stat: 'team_sizes', teams: result.slice(0, 20), totalTeams: result.length };
+    }
+
+    case 'tenure_distribution': {
+      const now = new Date();
+      const buckets = { '<1yr': 0, '1-2yr': 0, '2-3yr': 0, '3-5yr': 0, '5+yr': 0 };
+      for (const p of people) {
+        if (!p.properties.startDate) continue;
+        const years = (now - new Date(p.properties.startDate)) / (365.25 * 24 * 60 * 60 * 1000);
+        if (years < 1) buckets['<1yr']++;
+        else if (years < 2) buckets['1-2yr']++;
+        else if (years < 3) buckets['2-3yr']++;
+        else if (years < 5) buckets['3-5yr']++;
+        else buckets['5+yr']++;
+      }
+      return { stat: 'tenure_distribution', buckets, totalPeople: people.length };
+    }
+
+    case 'level_distribution': {
+      const levels = {};
+      for (const p of people) {
+        const level = p.properties.level || 'unknown';
+        levels[level] = (levels[level] || 0) + 1;
+      }
+      return { stat: 'level_distribution', levels, totalPeople: people.length };
+    }
+
+    case 'location_distribution': {
+      const locations = {};
+      for (const p of people) {
+        const loc = p.properties.location || 'unknown';
+        locations[loc] = (locations[loc] || 0) + 1;
+      }
+      const sorted = Object.entries(locations).sort((a, b) => b[1] - a[1]).map(([location, count]) => ({ location, count }));
+      return { stat: 'location_distribution', locations: sorted, totalPeople: people.length };
+    }
+
+    case 'skill_coverage': {
+      const skills = nodesByType['skill'] || [];
+      const result = skills.map(s => {
+        const holders = (edgesByTarget[s.id] || []).filter(e => e.type === 'has_skill');
+        return { ...nodeSummary(s), holderCount: holders.length };
+      }).sort((a, b) => a.holderCount - b.holderCount);
+      return { stat: 'skill_coverage', skills: result.slice(0, 20), rareSkills: result.filter(s => s.holderCount <= 2), totalSkills: result.length };
+    }
+
+    default:
+      return { error: `Unknown stat_type: ${stat_type}. Available: managers_by_reports, team_sizes, tenure_distribution, level_distribution, location_distribution, skill_coverage` };
+  }
+}
+
 // --- Tool definitions for OpenAI ---
 const toolDefs = [
   {
@@ -436,6 +516,24 @@ const toolDefs = [
         required: ['person_id']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_org_stats',
+      description: 'Pre-computed org-wide statistics and rankings. Use this for aggregate questions like "who has the most reports", "team sizes", "tenure breakdown", etc. One call returns the full ranking — no need to query individual people.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stat_type: {
+            type: 'string',
+            enum: ['managers_by_reports', 'team_sizes', 'tenure_distribution', 'level_distribution', 'location_distribution', 'skill_coverage'],
+            description: 'Type of stat: managers_by_reports (ranked list of managers by direct report count), team_sizes (teams by member count), tenure_distribution (employee tenure buckets), level_distribution (headcount by level), location_distribution (headcount by location), skill_coverage (skills ranked by how many people have them, rare skills highlighted)'
+          }
+        },
+        required: ['stat_type']
+      }
+    }
   }
 ];
 
@@ -447,7 +545,8 @@ const toolFns = {
   get_direct_reports: (args) => get_direct_reports(args.person_id, args.recursive),
   traverse: (args) => traverse(args.start_id, args.edge_types, args.max_depth),
   search_nodes: (args) => search_nodes(args.query, args.node_type),
-  get_impact_radius: (args) => get_impact_radius(args.person_id)
+  get_impact_radius: (args) => get_impact_radius(args.person_id),
+  get_org_stats: (args) => get_org_stats(args.stat_type)
 };
 
 // --- System Prompt ---
@@ -468,7 +567,7 @@ Projects and technical work are relevant context but **secondary**. Don't lead w
 
 ## Your Tools
 
-You have 7 graph query tools. ALWAYS query the graph before answering. Never fabricate data.
+You have 8 graph query tools. ALWAYS query the graph before answering. Never fabricate data.
 
 - **search_people** — Find people by name/role/email
 - **get_person_full** — Full profile + all connections grouped by relationship type
@@ -477,6 +576,7 @@ You have 7 graph query tools. ALWAYS query the graph before answering. Never fab
 - **traverse** — Walk outward from any node along specified relationship types
 - **search_nodes** — Search any node type
 - **get_impact_radius** — The power tool. Multi-hop impact analysis for a person: direct reports, mentees, work assignments, skills with coverage, team size, recruiting pipeline. Start here for any "what happens if X leaves/changes" question.
+- **get_org_stats** — Pre-computed org-wide rankings and distributions. Use for aggregate questions like "who has the most reports", "largest teams", "tenure breakdown", "skill coverage". One call returns the full ranking — no need to query individuals one by one.
 
 ## How to Think
 
@@ -551,6 +651,50 @@ Steps alternate between nodes (with id, label, type, detail) and edges (with rel
 ] } }
 \`\`\`
 
+8. **chart** — Structured data visualizations. Use when the insight is best shown as a chart rather than text or cards. The frontend renders these as styled SVG — you just provide the data.
+
+**Bar chart** (horizontal bars — great for rankings and comparisons):
+\`\`\`json
+{ "type": "chart", "data": {
+  "chartType": "bar",
+  "title": "Managers by Direct Report Count",
+  "items": [
+    { "label": "Raj Patel", "value": 12, "subtitle": "Platform" },
+    { "label": "Lisa Huang", "value": 8, "subtitle": "Engineering" },
+    { "label": "Tom Davis", "value": 6, "subtitle": "Product" }
+  ],
+  "valueLabel": "direct reports"
+} }
+\`\`\`
+
+**Donut chart** (proportions/breakdowns):
+\`\`\`json
+{ "type": "chart", "data": {
+  "chartType": "donut",
+  "title": "Team Size Distribution",
+  "items": [
+    { "label": "Engineering", "value": 62 },
+    { "label": "Product", "value": 24 },
+    { "label": "Design", "value": 18 }
+  ]
+} }
+\`\`\`
+
+**Timeline** (temporal sequence):
+\`\`\`json
+{ "type": "chart", "data": {
+  "chartType": "timeline",
+  "title": "Offboarding Milestones",
+  "items": [
+    { "label": "Last day confirmed", "date": "2026-03-15", "status": "done" },
+    { "label": "Knowledge transfer complete", "date": "2026-03-22", "status": "in_progress" },
+    { "label": "COBRA notice sent", "date": "2026-03-29", "status": "pending" }
+  ]
+} }
+\`\`\`
+
+Use chart for: rankings, comparisons, breakdowns, proportions, timelines, progress tracking. Do NOT use chart when a person_card, impact_card, or cascade_path already fits.
+
 ## Composition Rules
 
 1. **Lead with person_card** for the subject of the query.
@@ -561,6 +705,7 @@ Steps alternate between nodes (with id, label, type, detail) and edges (with rel
 6. **relationship_map at the end** — visual summary of the full impact footprint.
 7. **Narrative sparingly** — for framing and transitions, not for dumping all analysis into text.
 8. **Mix block types** — a good response has 8-15 blocks of 4-6 different types.
+9. **chart for data insights** — when you have quantitative data best shown as a bar chart, donut, or timeline, use chart. 1-2 per response max.
 
 ## Priority Order for Impacts
 
@@ -637,6 +782,8 @@ app.get('/api/chat/stream', async (req, res) => {
     res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
   }
 
+  console.log('--- New request:', message.substring(0, 80));
+
   try {
     // Get or create conversation
     let conv = conversations.get(convId);
@@ -662,11 +809,12 @@ app.get('/api/chat/stream', async (req, res) => {
         tools: toolDefs,
         tool_choice: toolCalls === 0 ? 'auto' : 'auto',
         temperature: 0.7,
-        max_completion_tokens: 4096
-      });
+        max_completion_tokens: 6144
+      }, { timeout: 90000 });
 
       const choice = completion.choices[0];
       const assistantMsg = choice.message;
+      console.log(`API call #${toolCalls} done. finish_reason=${choice.finish_reason}, has_tool_calls=${!!(assistantMsg.tool_calls && assistantMsg.tool_calls.length)}, content_len=${(assistantMsg.content || '').length}`);
       conv.messages.push(assistantMsg);
 
       // If the model wants to call tools
@@ -688,7 +836,8 @@ app.get('/api/chat/stream', async (req, res) => {
             get_direct_reports: `Tracing reporting tree for ${args.person_id}...`,
             traverse: `Walking graph from ${args.start_id}...`,
             search_nodes: `Searching ${args.node_type || 'all'} nodes for "${args.query}"...`,
-            get_impact_radius: `Analyzing impact radius — tracing reports, mentees, projects, skills...`
+            get_impact_radius: `Analyzing impact radius — tracing reports, mentees, projects, skills...`,
+            get_org_stats: `Computing org-wide ${args.stat_type || 'statistics'}...`
           };
           sendSSE('status', { message: statusMessages[fnName] || `Calling ${fnName}...` });
 
@@ -713,6 +862,10 @@ app.get('/api/chat/stream', async (req, res) => {
       }
 
       // No tool calls — we have the final response
+      console.log('Final response received, finish_reason:', choice.finish_reason, 'content length:', (assistantMsg.content || '').length);
+      if (choice.finish_reason === 'length') {
+        console.warn('WARNING: Response truncated by token limit!');
+      }
       if (assistantMsg.content) {
         // Parse the JSON response
         let content = assistantMsg.content.trim();
@@ -725,6 +878,9 @@ app.get('/api/chat/stream', async (req, res) => {
         try {
           parsed = JSON.parse(content);
         } catch (e) {
+          console.error('JSON parse error:', e.message);
+          console.error('Content starts with:', content.substring(0, 200));
+          console.error('Content ends with:', content.substring(content.length - 200));
           // If it's not JSON, wrap it in a narrative block
           parsed = { blocks: [{ type: 'narrative', content: assistantMsg.content }] };
         }

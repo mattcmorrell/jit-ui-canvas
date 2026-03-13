@@ -427,6 +427,134 @@ const Primitives = (() => {
     return container;
   }
 
+  // --- 9. Chart (structured data → SVG visualization) ---
+  const CHART_COLORS = ['#b388ff', '#4ea8de', '#06d6a0', '#ff8c42', '#ffd166', '#ff4d6a', '#64dfdf'];
+
+  function renderChart(data) {
+    const d = data.data || data;
+    const chartType = d.chartType || 'bar';
+    switch (chartType) {
+      case 'bar': return renderBarChart(d);
+      case 'donut': return renderDonutChart(d);
+      case 'timeline': return renderTimeline(d);
+      default: return renderBarChart(d);
+    }
+  }
+
+  function renderBarChart(d) {
+    const items = d.items || [];
+    if (items.length === 0) return el('div', 'block chart-empty', 'No data');
+
+    const maxVal = Math.max(...items.map(i => i.value));
+    const div = el('div', 'block chart-container');
+
+    let html = '';
+    for (let i = 0; i < items.length; i++) {
+      const pct = maxVal > 0 ? (items[i].value / maxVal * 100) : 0;
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      html += `
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="bar-name">${items[i].label}</span>
+            ${items[i].subtitle ? `<span class="bar-subtitle">${items[i].subtitle}</span>` : ''}
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="bar-value">${items[i].value}</div>
+        </div>`;
+    }
+    if (d.valueLabel) {
+      html += `<div class="chart-footnote">${d.valueLabel}</div>`;
+    }
+
+    div.innerHTML = html;
+    return div;
+  }
+
+  function renderDonutChart(d) {
+    const items = d.items || [];
+    const total = items.reduce((s, i) => s + i.value, 0);
+    if (total === 0) return el('div', 'block chart-empty', 'No data');
+
+    const div = el('div', 'block chart-container donut-chart');
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const size = 160;
+    const cx = size / 2, cy = size / 2, r = 60, strokeW = 20;
+
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.style.display = 'block';
+    svg.style.margin = '0 auto 12px';
+
+    let cumAngle = -90;
+    for (let i = 0; i < items.length; i++) {
+      const angle = (items[i].value / total) * 360;
+      const startRad = (cumAngle * Math.PI) / 180;
+      const endRad = ((cumAngle + angle) * Math.PI) / 180;
+      const x1 = cx + r * Math.cos(startRad);
+      const y1 = cy + r * Math.sin(startRad);
+      const x2 = cx + r * Math.cos(endRad);
+      const y2 = cy + r * Math.sin(endRad);
+      const largeArc = angle > 180 ? 1 : 0;
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', strokeW);
+      svg.appendChild(path);
+      cumAngle += angle;
+    }
+
+    // Center label
+    const text = document.createElementNS(svgNS, 'text');
+    text.setAttribute('x', cx);
+    text.setAttribute('y', cy + 5);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', '#e8e8ef');
+    text.setAttribute('font-size', '18');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('font-family', 'Inter, sans-serif');
+    text.textContent = total;
+    svg.appendChild(text);
+
+    div.appendChild(svg);
+
+    // Legend
+    const legend = el('div', 'donut-legend');
+    for (let i = 0; i < items.length; i++) {
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      legend.innerHTML += `<div class="donut-legend-item"><span class="donut-dot" style="background:${color}"></span>${items[i].label} <span class="donut-val">${items[i].value}</span></div>`;
+    }
+    div.appendChild(legend);
+    return div;
+  }
+
+  function renderTimeline(d) {
+    const items = d.items || [];
+    const div = el('div', 'block chart-container timeline-chart');
+
+    let html = '<div class="timeline-track">';
+    for (const item of items) {
+      const statusClass = item.status || 'pending';
+      html += `
+        <div class="timeline-item ${statusClass}">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <div class="timeline-label">${item.label}</div>
+            ${item.date ? `<div class="timeline-date">${item.date}</div>` : ''}
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    div.innerHTML = html;
+    return div;
+  }
+
   // --- Renderer dispatch ---
   function render(block, onFollowUp) {
     const type = block.type;
@@ -438,6 +566,8 @@ const Primitives = (() => {
       case 'cascade_path': return renderCascadePath(block, onFollowUp);
       case 'action_list': return renderActionList(block);
       case 'relationship_map': return renderRelationshipMap(block, onFollowUp);
+      case 'chart': return renderChart(block);
+      case 'custom_visual': return renderChart(block);
       default:
         const div = el('div', 'block block-error');
         div.textContent = `Unknown block type: ${type}`;
@@ -450,6 +580,7 @@ const Primitives = (() => {
     renderPersonCardHero,
     renderSingleMetric,
     renderMetricChips,
+    renderChart,
     renderNarrativeContent
   };
 })();
