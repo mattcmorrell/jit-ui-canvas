@@ -159,6 +159,7 @@ body {
   top: 52px; /* below top bar */
   overflow: hidden;
   cursor: grab;
+  transition: top 0.3s ease;
 }
 
 #world {
@@ -202,6 +203,10 @@ body {
   max-width: 540px;
 }
 
+.canvas-section-wide {
+  max-width: 720px;
+}
+
 .section-title {
   font-size: 0.72rem;
   font-weight: 600;
@@ -215,6 +220,18 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.section-body-grid {
+  display: grid;
+  gap: 8px;
+}
+
+/* Blocks in grid sections should fill their cell */
+.section-body-grid > .raw-block,
+.section-body-grid > .block {
+  max-width: none;
+  width: auto;
 }
 
 /* Severity glow on impact cards in sections */
@@ -823,68 +840,69 @@ body {
 }
 
 /* ============================
-   NARRATIVE PANEL (bottom-left, floating)
+   INSIGHT BAR (top, persistent)
    ============================ */
-.narrative-panel {
+.insight-bar {
   position: fixed;
-  bottom: 100px;
-  left: 24px;
-  z-index: 150;
-  max-width: 380px;
-  width: 100%;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
-  pointer-events: auto;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-}
-.narrative-panel.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.narrative-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
+  top: 52px;
+  left: 0;
+  right: 0;
+  z-index: 180;
+  background: rgba(10,10,15,0.88);
+  backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  pointer-events: auto;
+  animation: insightSlideDown 0.4s cubic-bezier(0.16,1,0.3,1);
 }
-.narrative-panel-dot {
-  width: 6px;
-  height: 6px;
+[data-theme="light"] .insight-bar {
+  background: rgba(245,245,248,0.92);
+}
+.insight-bar-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.insight-bar-icon {
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+.insight-bar-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--accent-purple);
-  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--agent-glow);
 }
-.narrative-panel-close {
-  margin-left: auto;
+.insight-bar-body {
+  flex: 1;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow-y: auto;
+}
+.insight-bar-body strong { color: var(--text-primary); }
+.insight-bar-body em { color: var(--accent-purple); }
+.insight-bar-body p { margin-bottom: 6px; }
+.insight-bar-body p:last-child { margin-bottom: 0; }
+.insight-bar-close {
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   padding: 0 4px;
   line-height: 1;
+  flex-shrink: 0;
 }
-.narrative-panel-close:hover { color: var(--text-primary); }
-.narrative-panel-body {
-  padding: 14px 16px;
-  font-size: 0.85rem;
-  line-height: 1.65;
-  color: var(--text-secondary);
-  max-height: 220px;
-  overflow-y: auto;
+.insight-bar-close:hover { color: var(--text-primary); }
+@keyframes insightSlideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.narrative-panel-body strong { color: var(--text-primary); }
-.narrative-panel-body em { color: var(--accent-purple); }
-.narrative-panel-body p { margin-bottom: 8px; }
 
 /* ============================
    ACTION DRAWER (right edge, slides in)

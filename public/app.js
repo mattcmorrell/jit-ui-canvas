@@ -12,9 +12,9 @@
   const sendBtn = document.getElementById('send-btn');
   const suggestionChips = document.getElementById('suggestion-chips');
   const centerPlaceholder = document.getElementById('center-placeholder');
-  const narrativePanel = document.getElementById('narrative-panel');
-  const narrativeBody = document.getElementById('narrative-body');
-  const narrativeClose = document.getElementById('narrative-close');
+  const insightBar = document.getElementById('insight-bar');
+  const insightBarBody = document.getElementById('insight-bar-body');
+  const insightBarClose = document.getElementById('insight-bar-close');
   const actionDrawer = document.getElementById('action-drawer');
   const actionDrawerBody = document.getElementById('action-drawer-body');
   const actionDrawerTab = document.getElementById('action-drawer-tab');
@@ -25,9 +25,7 @@
   let isStreaming = false;
   let blockCounter = 0;
   let personCardId = null;
-  let narrativeQueue = [];
-  let narrativeTimer = null;
-  let narrativePinned = false;
+  // (insight bar replaces content on each narrative, no accumulation needed)
   let actionDrawerOpen = false;
 
   // --- Init canvas engine ---
@@ -63,36 +61,33 @@
     centerPlaceholder.classList.remove('pulsing');
   }
 
-  // --- Narrative panel ---
-  function showNarrative(block) {
+  // --- Insight bar (top, persistent) ---
+  let hasInsight = false;
+
+  function showInsight(block) {
     const content = typeof block.data === 'string' ? block.data : (block.data?.content || block.content || '');
     if (!content) return;
 
-    narrativeBody.innerHTML = Primitives.renderNarrativeContent(content);
-    narrativePanel.style.display = 'flex';
-    narrativePanel.classList.add('visible');
-    narrativePinned = false;
+    // Keep the first narrative — it's the primary analysis.
+    // Later narratives are typically follow-up offers.
+    if (hasInsight) return;
+    hasInsight = true;
 
-    // Auto-fade after 12s unless pinned
-    clearTimeout(narrativeTimer);
-    narrativeTimer = setTimeout(() => {
-      if (!narrativePinned) {
-        narrativePanel.classList.remove('visible');
-        setTimeout(() => { narrativePanel.style.display = 'none'; }, 400);
-      }
-    }, 12000);
+    insightBarBody.innerHTML = Primitives.renderNarrativeContent(content);
+    insightBar.style.display = 'block';
+    adjustViewportForInsight();
   }
 
-  narrativeClose.addEventListener('click', () => {
-    narrativePanel.classList.remove('visible');
-    setTimeout(() => { narrativePanel.style.display = 'none'; }, 400);
-  });
+  function adjustViewportForInsight() {
+    requestAnimationFrame(() => {
+      const barH = insightBar.offsetHeight || 0;
+      viewport.style.top = (52 + barH) + 'px';
+    });
+  }
 
-  narrativePanel.addEventListener('click', (e) => {
-    if (!e.target.closest('.narrative-panel-close')) {
-      narrativePinned = true;
-      clearTimeout(narrativeTimer);
-    }
+  insightBarClose.addEventListener('click', () => {
+    insightBar.style.display = 'none';
+    viewport.style.top = '52px';
   });
 
   // --- Action drawer ---
@@ -153,8 +148,9 @@
     cascadeCount = 0;
     nextRowLeft = 0;
     nextRowRight = 0;
-    narrativePanel.style.display = 'none';
-    narrativePanel.classList.remove('visible');
+    insightBar.style.display = 'none';
+    viewport.style.top = '52px';
+    hasInsight = false;
     actionDrawer.classList.remove('open');
     actionDrawerOpen = false;
     actionDrawerBody.innerHTML = '';
@@ -392,7 +388,7 @@
 
         case 'impact_card': {
           if (!CanvasEngine.getSection('raw-impacts')) {
-            CanvasEngine.addSection('raw-impacts', 5, nextRowRight, 'Key Impacts');
+            CanvasEngine.addSection('raw-impacts', 5, nextRowRight, 'Key Impacts', { grid: 2 });
           }
           const el = renderRawBlock(block);
           CanvasEngine.addToSection('raw-impacts', el);
@@ -404,7 +400,7 @@
 
         case 'cascade_path': {
           if (!CanvasEngine.getSection('raw-cascades')) {
-            CanvasEngine.addSection('raw-cascades', 0, nextRowLeft, 'How It Connects');
+            CanvasEngine.addSection('raw-cascades', 0, nextRowLeft, 'How It Connects', { grid: 2 });
           }
           const el = renderRawBlock(block);
           CanvasEngine.addToSection('raw-cascades', el);
@@ -426,7 +422,7 @@
         }
 
         case 'narrative': {
-          showNarrative(block);
+          showInsight(block);
           break;
         }
 
@@ -496,7 +492,7 @@
 
       case 'impact_card': {
         if (!CanvasEngine.getSection('impacts')) {
-          CanvasEngine.addSection('impacts', 5, nextRowRight, 'Key Impacts');
+          CanvasEngine.addSection('impacts', 5, nextRowRight, 'Key Impacts', { grid: 2 });
         }
         const el = Primitives.render(block, handleFollowUp);
         CanvasEngine.addToSection('impacts', el);
@@ -520,7 +516,7 @@
       }
 
       case 'narrative': {
-        showNarrative(block);
+        showInsight(block);
         break;
       }
 

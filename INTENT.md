@@ -43,8 +43,8 @@ The current primitives (person_card, impact_card, cascade_path, relationship_map
 - `narrative` → stays in the floating panel
 
 ## What's Done
-1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection`, `addToSection`. SVG connections removed.
-2. **app.js** — Section-based placement with dynamic row tracking. `?raw` mode flag for evaluating LLM output without styled primitives.
+1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection(id, col, row, title, opts)`, `addToSection`. Sections support `{ grid: N }` option for multi-column internal grid layout. SVG connections removed.
+2. **app.js** — Section-based placement with dynamic row tracking. `?raw` mode flag. Insight bar (top, persistent) replaces the old auto-fading narrative panel — shows the first narrative as a context summary, stays until dismissed or next query. Impact sections use 2-col grid in both modes. Cascade sections use 2-col grid in raw mode.
 3. **primitives.js** — Chart renderers (bar, donut, timeline) as SVG. Hardcoded card primitives (person, impact, cascade, relationship_map, action_list). Metric chips.
 4. **styles.css** — Brick grid, chart, raw-mode, and card primitive styles.
 5. **server.js** — 8 block types in system prompt. 8 graph tools including `get_org_stats` (aggregate rankings: managers_by_reports, team_sizes, department_sizes, division_sizes, tenure/level/location distributions, skill_coverage). 90s timeout, 6144 token limit.

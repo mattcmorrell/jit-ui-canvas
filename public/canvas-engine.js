@@ -121,7 +121,8 @@ const CanvasEngine = (() => {
   }
 
   // --- Sections (titled containers that hold child elements) ---
-  function addSection(id, col, row, title) {
+  // opts.grid: number of columns for grid layout (e.g. 2)
+  function addSection(id, col, row, title, opts) {
     const el = document.createElement('div');
     el.className = 'canvas-section';
     el.dataset.sectionId = id;
@@ -129,6 +130,10 @@ const CanvasEngine = (() => {
     el.style.top = `${row * BRICK}px`;
     el.style.opacity = '0';
     el.style.transform = 'scale(0.97)';
+
+    if (opts && opts.grid) {
+      el.classList.add('canvas-section-wide');
+    }
 
     if (title) {
       const titleEl = document.createElement('div');
@@ -139,6 +144,10 @@ const CanvasEngine = (() => {
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'section-body';
+    if (opts && opts.grid) {
+      bodyEl.classList.add('section-body-grid');
+      bodyEl.style.gridTemplateColumns = `repeat(${opts.grid}, 1fr)`;
+    }
     el.appendChild(bodyEl);
 
     world.appendChild(el);
