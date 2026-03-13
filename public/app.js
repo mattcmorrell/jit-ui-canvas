@@ -270,10 +270,9 @@
     switch (type) {
       case 'person_card': {
         const statusClass = d.status === 'terminated' ? 'raw-status-terminated' : 'raw-status-active';
-        const ini = (d.name || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
         el.innerHTML = `
           <div class="raw-person-header">
-            <div class="raw-avatar ${statusClass}">${ini}</div>
+            ${Primitives.avatarHtml(d.avatarUrl, d.name, 'raw-avatar', statusClass)}
             <div class="raw-person-info">
               <div class="raw-block-type">person</div>
               <div class="raw-title">${d.name || 'Unknown'}</div>

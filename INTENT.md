@@ -40,7 +40,7 @@ The current primitives (person_card, impact_card, cascade_path, relationship_map
 - `relationship_map` → "Organizational Footprint" section, right column
 - `chart` / `custom_visual` → placed in whichever column has more room
 - `action_list` → stays in the drawer (not on canvas)
-- `narrative` → stays in the floating panel
+- `narrative` → first one shows in the persistent insight bar (top of screen); later narratives are ignored
 
 ## What's Done
 1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection(id, col, row, title, opts)`, `addToSection`. Sections support `{ grid: N }` option for multi-column internal grid layout. SVG connections removed.
@@ -58,12 +58,14 @@ The current primitives (person_card, impact_card, cascade_path, relationship_map
 - **Individual queries for rankings**: Model made 6+ tool calls to query each manager individually for "who has the most reports?", context got huge, final response generation hung. Fixed by adding `get_org_stats` aggregate tool.
 
 ## Open Questions
-- Can the chart pattern (LLM emits structured data, frontend renders) replace the card primitives too? Or do we need the primitive layer as a translation step?
-- What's the right abstraction for the LLM to describe a visual — a layout spec? A mini component DSL? Just richer structured data?
 - Should chart blocks be interactive (click a bar → drill into that person)?
+- The raw mode renderers are clean but basic — should they become the default, replacing the styled primitives? Or keep both paths?
+- No avatar/photo data in the ee-graph — initials-based avatars are the right call for now. Would real photos change the UX significantly?
+- Should the insight bar show all narratives (scrollable) or just the first? Currently first-only to keep it focused.
 
 ## Next Steps
-1. Evaluate `?raw` output across multiple scenarios to understand what the LLM is good/bad at composing
-2. Design a more flexible rendering approach to replace the rigid card primitives
-3. Consider interactive charts (click bar → follow-up query)
+1. Continue evaluating `?raw` output across different scenarios (not just Raj resignation)
+2. Consider making raw mode the default if it proves sufficient
+3. Interactive charts (click bar → follow-up query)
 4. Clean up debug console.log statements
+5. Consider whether cascades in normal mode should also use 2-col grid

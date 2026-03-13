@@ -3,6 +3,9 @@
 
 const Primitives = (() => {
 
+  // --- Config ---
+  const AVATAR_BASE = 'https://mattcmorrell.github.io/ee-graph/';
+
   // --- Helpers ---
   function el(tag, className, innerHTML) {
     const e = document.createElement(tag);
@@ -14,6 +17,14 @@ const Primitives = (() => {
   function initials(name) {
     if (!name) return '?';
     return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  function avatarHtml(avatarUrl, name, cssClass, statusClass) {
+    if (avatarUrl) {
+      const src = avatarUrl.startsWith('http') ? avatarUrl : AVATAR_BASE + avatarUrl;
+      return `<img class="${cssClass} ${statusClass || ''}" src="${src}" alt="${name || ''}" onerror="this.outerHTML='<div class=\\'${cssClass} ${statusClass || ''}\\'>${initials(name)}</div>'">`;
+    }
+    return `<div class="${cssClass} ${statusClass || ''}">${initials(name)}</div>`;
   }
 
   function parseMarkdown(md) {
@@ -59,7 +70,7 @@ const Primitives = (() => {
 
     const statusClass = d.status === 'terminated' ? 'terminated' : 'active';
     card.innerHTML = `
-      <div class="person-avatar ${statusClass}">${initials(d.name)}</div>
+      ${avatarHtml(d.avatarUrl, d.name, 'person-avatar', statusClass)}
       <div class="person-info">
         <h3>${d.name || 'Unknown'}</h3>
         <div class="role">${d.role || ''}${d.level ? ' · ' + d.level : ''}</div>
@@ -91,7 +102,7 @@ const Primitives = (() => {
 
     const statusClass = d.status === 'terminated' ? 'terminated' : 'active';
     card.innerHTML = `
-      <div class="hero-avatar ${statusClass}">${initials(d.name)}</div>
+      ${avatarHtml(d.avatarUrl, d.name, 'hero-avatar', statusClass)}
       <div class="person-info">
         <h3 class="hero-name">${d.name || 'Unknown'}</h3>
         <div class="role hero-role">${d.role || ''}${d.level ? ' · ' + d.level : ''}</div>
@@ -581,6 +592,8 @@ const Primitives = (() => {
     renderSingleMetric,
     renderMetricChips,
     renderChart,
-    renderNarrativeContent
+    renderNarrativeContent,
+    avatarHtml,
+    AVATAR_BASE
   };
 })();

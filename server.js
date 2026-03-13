@@ -50,7 +50,7 @@ function nodeSummary(n) {
   const p = n.properties;
   const base = { id: n.id, type: n.type, name: p.name || p.title || n.id };
   if (n.type === 'person') {
-    return { ...base, role: p.role, level: p.level, status: p.status, startDate: p.startDate, location: p.location };
+    return { ...base, role: p.role, level: p.level, status: p.status, startDate: p.startDate, location: p.location, avatarUrl: p.avatarUrl };
   }
   if (n.type === 'team') return { ...base, teamType: p.teamType, headcount: p.headcount };
   if (n.type === 'project') return { ...base, status: p.status, priority: p.priority, targetEndDate: p.targetEndDate };
@@ -621,7 +621,7 @@ You MUST respond with valid JSON containing a "blocks" array. Each block has a "
 
 2. **person_card** — Profile card for a person. Lead your response with this for the subject.
 \`\`\`json
-{ "type": "person_card", "data": { "id": "person-008", "name": "Raj Patel", "role": "Engineering Lead", "level": "M-1", "status": "active", "startDate": "2022-11-07", "location": "Austin, TX", "teamName": "Platform", "managerName": "Lisa Huang", "directReportCount": 12, "projectCount": 4, "stats": [{ "label": "Tenure", "value": "3.3 years" }, { "label": "Direct Reports", "value": "12" }] } }
+{ "type": "person_card", "data": { "id": "person-008", "name": "Raj Patel", "role": "Engineering Lead", "level": "M-1", "status": "active", "startDate": "2022-11-07", "location": "Austin, TX", "teamName": "Platform", "managerName": "Lisa Huang", "directReportCount": 12, "projectCount": 4, "avatarUrl": "data/avatars/person-008.jpg", "stats": [{ "label": "Tenure", "value": "3.3 years" }, { "label": "Direct Reports", "value": "12" }] } }
 \`\`\`
 
 3. **impact_card** — A discovered impact with severity. Use after showing HOW you found it (via cascade_path).

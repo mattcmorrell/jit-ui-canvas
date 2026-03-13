@@ -484,6 +484,10 @@ body {
 }
 .raw-avatar.raw-status-active { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .raw-avatar.raw-status-terminated { background: var(--accent-red-dim); color: var(--accent-red); }
+img.raw-avatar {
+  object-fit: cover;
+}
+img.raw-avatar.raw-status-terminated { filter: grayscale(0.7); opacity: 0.7; }
 .raw-person-info {
   flex: 1;
   min-width: 0;
@@ -1030,6 +1034,10 @@ body {
 }
 .person-avatar.active { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .person-avatar.terminated { background: var(--accent-red-dim); color: var(--accent-red); }
+img.person-avatar {
+  object-fit: cover;
+}
+img.person-avatar.terminated { filter: grayscale(0.7); opacity: 0.7; }
 .person-info { flex: 1; min-width: 0; }
 .person-info h3 {
   font-size: 1.1rem;
@@ -1121,6 +1129,10 @@ body {
 }
 .hero-avatar.active { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .hero-avatar.terminated { background: var(--accent-red-dim); color: var(--accent-red); }
+img.hero-avatar {
+  object-fit: cover;
+}
+img.hero-avatar.terminated { filter: grayscale(0.7); opacity: 0.7; }
 .hero-name {
   font-size: 1.1rem !important;
 }
