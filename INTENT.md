@@ -48,7 +48,7 @@ The current primitives (person_card, impact_card, cascade_path, relationship_map
 3. **primitives.js** — Chart renderers (bar, donut, timeline) as SVG. Hardcoded card primitives (person, impact, cascade, relationship_map, action_list). Metric chips.
 4. **styles.css** — Brick grid, chart, raw-mode, and card primitive styles.
 5. **server.js** — 8 block types in system prompt. 8 graph tools including `get_org_stats` (aggregate rankings: managers_by_reports, team_sizes, department_sizes, division_sizes, tenure/level/location distributions, skill_coverage). 90s timeout, 6144 token limit.
-6. **`?raw` mode** — Append `?raw` to URL. Charts render as real SVG visuals. Cards render as clean minimal text. Lets you evaluate the LLM's block composition and data quality independent of primitive styling.
+6. **`?raw` mode** — Append `?raw` to URL. Now uses the same section-based canvas layout as normal mode (person hero top-left, "Key Impacts" section right, "How It Connects" section left, "Organizational Footprint" section bottom-right) but with clean minimal text renderers instead of styled primitives. Charts still render as real SVG. Metric chips inline into person card. Impact cards show severity tags and affected-people pills. Cascade paths render as flow-node chains. Relationship maps show tagged node lists. Narrative panel and action drawer work identically to normal mode.
 
 ## Rejected Approaches
 - **Radial/polar layout**: Scattered cards with no hierarchy. Replaced in previous iteration.

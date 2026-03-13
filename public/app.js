@@ -273,28 +273,49 @@
 
     switch (type) {
       case 'person_card': {
+        const statusClass = d.status === 'terminated' ? 'raw-status-terminated' : 'raw-status-active';
+        const ini = (d.name || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
         el.innerHTML = `
-          <div class="raw-block-type">person</div>
-          <div class="raw-title">${d.name}</div>
-          <div class="raw-subtitle">${d.role || ''} · ${d.level || ''} · ${d.teamName || ''}</div>
-          <div class="raw-meta">${d.location || ''} · Since ${d.startDate || '?'} · Manager: ${d.managerName || '?'}</div>
-          <div class="raw-meta">${d.directReportCount || 0} reports · ${d.projectCount || 0} projects</div>`;
+          <div class="raw-person-header">
+            <div class="raw-avatar ${statusClass}">${ini}</div>
+            <div class="raw-person-info">
+              <div class="raw-block-type">person</div>
+              <div class="raw-title">${d.name || 'Unknown'}</div>
+              <div class="raw-subtitle">${d.role || ''}${d.level ? ' · ' + d.level : ''}${d.teamName ? ' · ' + d.teamName : ''}</div>
+            </div>
+          </div>
+          <div class="raw-person-meta-row">
+            ${d.managerName ? `<span class="raw-meta-tag">↑ ${d.managerName}</span>` : ''}
+            ${d.location ? `<span class="raw-meta-tag">◎ ${d.location}</span>` : ''}
+            ${d.startDate ? `<span class="raw-meta-tag">Since ${d.startDate}</span>` : ''}
+            ${d.directReportCount ? `<span class="raw-meta-tag">${d.directReportCount} reports</span>` : ''}
+            ${d.projectCount ? `<span class="raw-meta-tag">${d.projectCount} projects</span>` : ''}
+          </div>`;
         break;
       }
       case 'metric_row': {
         const metrics = d.metrics || [];
-        el.innerHTML = `<div class="raw-block-type">metrics</div>` +
-          metrics.map(m => `<div class="raw-metric"><span class="raw-metric-val">${m.value}</span> ${m.label}${m.context ? ` — ${m.context}` : ''}</div>`).join('');
+        el.className = 'raw-metrics-row';
+        el.innerHTML = metrics.map(m =>
+          `<div class="raw-metric-chip">
+            <span class="raw-metric-val">${m.value}</span>
+            <span class="raw-metric-label">${m.label}</span>
+          </div>`
+        ).join('');
         break;
       }
       case 'impact_card': {
         const sev = d.severity || 'medium';
-        const people = (d.affectedPeople || []).map(p => p.name).join(', ');
+        const people = (d.affectedPeople || []).map(p =>
+          `<span class="raw-person-tag">${p.name}</span>`
+        ).join('');
         el.innerHTML = `
-          <div class="raw-block-type">${sev} impact</div>
-          <div class="raw-title">${d.title || ''}</div>
+          <div class="raw-impact-header">
+            <span class="raw-severity-tag raw-sev-${sev}">${sev}</span>
+            <span class="raw-title">${d.title || ''}</span>
+          </div>
           <div class="raw-body">${d.description || ''}</div>
-          ${people ? `<div class="raw-meta">Affects: ${people}</div>` : ''}`;
+          ${people ? `<div class="raw-people-row">${people}</div>` : ''}`;
         el.classList.add(`raw-severity-${sev}`);
         break;
       }
@@ -302,19 +323,21 @@
         const steps = d.steps || [];
         el.innerHTML = `<div class="raw-block-type">cascade</div>
           <div class="raw-title">${d.title || ''}</div>
-          <div class="raw-cascade">${steps.map(s =>
-            s.edge ? `<span class="raw-edge">→ ${s.label}</span>`
-                   : `<span class="raw-node">${s.label}</span><span class="raw-node-detail">${s.detail || ''}</span>`
-          ).join(' ')}</div>`;
+          <div class="raw-cascade-flow">${steps.map(s =>
+            s.edge ? `<span class="raw-flow-edge">→ <em>${s.label}</em></span>`
+                   : `<span class="raw-flow-node">${s.label}${s.detail ? `<span class="raw-flow-detail">${s.detail}</span>` : ''}</span>`
+          ).join('')}</div>`;
         break;
       }
       case 'relationship_map': {
-        const nodeCount = (d.nodes || []).length;
+        const nodes = d.nodes || [];
         const edgeCount = (d.edges || []).length;
         el.innerHTML = `<div class="raw-block-type">relationship map</div>
           <div class="raw-title">${d.title || ''}</div>
-          <div class="raw-meta">${nodeCount} nodes · ${edgeCount} edges</div>
-          <div class="raw-body">${(d.nodes || []).map(n => `${n.label}${n.highlight ? ' ★' : ''}`).join(', ')}</div>`;
+          <div class="raw-meta">${nodes.length} nodes · ${edgeCount} edges</div>
+          <div class="raw-node-list">${nodes.map(n =>
+            `<span class="raw-node-tag${n.highlight ? ' raw-node-highlight' : ''}">${n.label}</span>`
+          ).join('')}</div>`;
         break;
       }
       default: {
@@ -329,37 +352,113 @@
     const type = block.type;
     const id = `block-${blockCounter++}`;
 
-    // --- RAW MODE: minimal text + real charts, no styled primitives ---
+    // --- RAW MODE: minimal text + real charts, section-based layout ---
     if (RAW_MODE) {
       hideCenterPlaceholder();
-      if (type === 'narrative') {
-        showNarrative(block);
-        return;
+
+      switch (type) {
+
+        case 'person_card': {
+          const el = renderRawBlock(block);
+          el.classList.add('raw-hero');
+          personCardId = id;
+          CanvasEngine.addBlock(id, el, 0, nextRowLeft);
+          advanceRow(0, el);
+          if (blockCounter === 1) CanvasEngine.focusOn(id, 1);
+          break;
+        }
+
+        case 'metric_row': {
+          // First metric_row: append inline into person card
+          // Subsequent metric_rows: place as standalone blocks
+          const d = block.data || block;
+          const metrics = d.metrics || [];
+          const personEntry = personCardId ? CanvasEngine.getBlock(personCardId) : null;
+          if (metrics.length > 0 && personEntry && !personEntry._hasMetrics) {
+            const metricEl = renderRawBlock(block);
+            metricEl.classList.add('raw-metrics-inline');
+            personEntry.el.appendChild(metricEl);
+            personEntry._hasMetrics = true;
+            advanceRow(0, personEntry.el);
+          } else {
+            const el = renderRawBlock(block);
+            const col = nextRowLeft <= nextRowRight ? 0 : 5;
+            const row = col === 0 ? nextRowLeft : nextRowRight;
+            CanvasEngine.addBlock(id, el, col, row);
+            advanceRow(col, el);
+          }
+          break;
+        }
+
+        case 'impact_card': {
+          if (!CanvasEngine.getSection('raw-impacts')) {
+            CanvasEngine.addSection('raw-impacts', 5, nextRowRight, 'Key Impacts');
+          }
+          const el = renderRawBlock(block);
+          CanvasEngine.addToSection('raw-impacts', el);
+          impactCount++;
+          const sec = CanvasEngine.getSection('raw-impacts');
+          if (sec) advanceRow(5, sec.el);
+          break;
+        }
+
+        case 'cascade_path': {
+          if (!CanvasEngine.getSection('raw-cascades')) {
+            CanvasEngine.addSection('raw-cascades', 0, nextRowLeft, 'How It Connects');
+          }
+          const el = renderRawBlock(block);
+          CanvasEngine.addToSection('raw-cascades', el);
+          cascadeCount++;
+          const sec = CanvasEngine.getSection('raw-cascades');
+          if (sec) advanceRow(0, sec.el);
+          break;
+        }
+
+        case 'relationship_map': {
+          if (!CanvasEngine.getSection('raw-map')) {
+            CanvasEngine.addSection('raw-map', 5, nextRowRight, 'Organizational Footprint');
+          }
+          const el = renderRawBlock(block);
+          CanvasEngine.addToSection('raw-map', el);
+          const sec = CanvasEngine.getSection('raw-map');
+          if (sec) advanceRow(5, sec.el);
+          break;
+        }
+
+        case 'narrative': {
+          showNarrative(block);
+          break;
+        }
+
+        case 'action_list': {
+          showActionDrawer(block);
+          break;
+        }
+
+        case 'chart':
+        case 'custom_visual': {
+          const d = block.data || block;
+          const vizTitle = d.title || 'Insight';
+          const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
+          const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
+          const vizId = `viz-${id}`;
+          CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);
+          const el = Primitives.renderChart(block);
+          CanvasEngine.addToSection(vizId, el);
+          const vizSec = CanvasEngine.getSection(vizId);
+          if (vizSec) advanceRow(vizCol, vizSec.el);
+          break;
+        }
+
+        default: {
+          const col = nextRowLeft <= nextRowRight ? 0 : 5;
+          const row = col === 0 ? nextRowLeft : nextRowRight;
+          const el = renderRawBlock(block);
+          CanvasEngine.addBlock(id, el, col, row);
+          advanceRow(col, el);
+          break;
+        }
       }
-      if (type === 'action_list') {
-        showActionDrawer(block);
-        return;
-      }
-      // Charts get their own section like normal mode
-      if (type === 'chart' || type === 'custom_visual') {
-        const d = block.data || block;
-        const vizTitle = d.title || 'Insight';
-        const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
-        const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
-        const vizId = `viz-${id}`;
-        CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);
-        const el = Primitives.renderChart(block);
-        CanvasEngine.addToSection(vizId, el);
-        const vizSec = CanvasEngine.getSection(vizId);
-        if (vizSec) advanceRow(vizCol, vizSec.el);
-        return;
-      }
-      const col = nextRowLeft <= nextRowRight ? 0 : 5;
-      const row = col === 0 ? nextRowLeft : nextRowRight;
-      const el = renderRawBlock(block);
-      CanvasEngine.addBlock(id, el, col, row);
-      advanceRow(col, el);
-      if (blockCounter === 1) CanvasEngine.focusOn(id, 1);
       return;
     }
 

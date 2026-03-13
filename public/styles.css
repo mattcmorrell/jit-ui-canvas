@@ -407,16 +407,16 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 16px 20px;
-  max-width: 520px;
+  max-width: 480px;
   margin-bottom: 8px;
 }
 .raw-block-type {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--accent-purple);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .raw-title {
   font-size: 1rem;
@@ -427,7 +427,7 @@ body {
 .raw-subtitle {
   font-size: 0.82rem;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .raw-meta {
   font-size: 0.75rem;
@@ -440,40 +440,193 @@ body {
   line-height: 1.5;
   margin-top: 6px;
 }
-.raw-metric {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
+
+/* Raw hero person card */
+.raw-block.raw-hero {
+  width: 460px;
+  max-width: 460px;
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 30px var(--agent-glow), 0 6px 24px rgba(0,0,0,0.25);
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--agent-accent-dim) 100%);
+}
+.raw-person-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.raw-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.raw-avatar.raw-status-active { background: var(--accent-blue-dim); color: var(--accent-blue); }
+.raw-avatar.raw-status-terminated { background: var(--accent-red-dim); color: var(--accent-red); }
+.raw-person-info {
+  flex: 1;
+  min-width: 0;
+}
+.raw-person-info .raw-title {
+  font-size: 1.1rem;
+}
+.raw-person-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.raw-meta-tag {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Raw metrics inline (inside person card) */
+.raw-metrics-inline {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+.raw-metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  background: none;
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  max-width: none;
+}
+.raw-metric-chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .raw-metric-val {
   font-weight: 700;
   color: var(--accent-purple);
-  font-size: 1rem;
-  margin-right: 6px;
+  font-size: 0.9rem;
 }
-.raw-cascade {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  line-height: 1.8;
-  margin-top: 6px;
-}
-.raw-edge {
-  color: var(--text-muted);
-  font-style: italic;
-}
-.raw-node {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.raw-node-detail {
+.raw-metric-label {
   font-size: 0.72rem;
-  color: var(--text-muted);
-  margin-left: 4px;
+  color: var(--text-secondary);
 }
+
+/* Raw impact cards */
 .raw-severity-critical { border-left: 3px solid var(--accent-red); }
 .raw-severity-high { border-left: 3px solid var(--accent-orange); }
 .raw-severity-medium { border-left: 3px solid var(--accent-yellow); }
 .raw-severity-low { border-left: 3px solid var(--accent-blue); }
+
+.raw-impact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.raw-severity-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.raw-sev-critical { background: var(--accent-red-dim); color: var(--accent-red); }
+.raw-sev-high { background: var(--accent-orange-dim); color: var(--accent-orange); }
+.raw-sev-medium { background: var(--accent-yellow-dim); color: var(--accent-yellow); }
+.raw-sev-low { background: var(--accent-blue-dim); color: var(--accent-blue); }
+
+.raw-people-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.raw-person-tag {
+  font-size: 0.72rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 2px 10px;
+  color: var(--text-primary);
+}
+
+/* Raw cascade flow */
+.raw-cascade-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+  line-height: 2;
+}
+.raw-flow-node {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.raw-flow-detail {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.raw-flow-edge {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+.raw-flow-edge em {
+  font-style: normal;
+  color: var(--accent-purple);
+  font-size: 0.65rem;
+}
+
+/* Raw relationship map node list */
+.raw-node-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.raw-node-tag {
+  font-size: 0.72rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 3px 10px;
+  color: var(--text-secondary);
+}
+.raw-node-highlight {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple);
+  font-weight: 600;
+}
 
 /* --- Center Placeholder --- */
 .center-placeholder {
