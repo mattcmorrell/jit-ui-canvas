@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Decision Journal</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e4e4e7;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid #2d2d3a;
+    background: #0d0d14;
+    flex-shrink: 0;
+  }
+  .top-bar-left {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .top-bar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f4f4f5;
+  }
+  .top-bar .project {
+    font-size: 12px;
+    color: #8b8b95;
+  }
+  .top-bar .updated {
+    font-size: 12px;
+    color: #52525b;
+  }
+
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    padding: 0 32px;
+    border-bottom: 1px solid #2d2d3a;
+    background: #0d0d14;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #71717a;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    user-select: none;
+    margin-bottom: -1px;
+  }
+  .tab:hover {
+    color: #b4b4bc;
+  }
+  .tab.active {
+    color: #e4e4e7;
+    border-bottom-color: #3b82f6;
+  }
+
+  /* ── Views container ── */
+  .view { display: none; flex: 1; overflow: hidden; }
+  .view.active { display: flex; }
+
+  /* ── Type colors ── */
+  :root {
+    --outcome: #34d399;
+    --opportunity: #60a5fa;
+    --solution: #a78bfa;
+    --experiment: #fbbf24;
+    --decision: #22d3ee;
+    --question: #f472b6;
+  }
+
+  /* ── Status styling ── */
+  .status-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .status-active     { background: rgba(59,130,246,0.3); color: #bfdbfe; }
+  .status-exploring  { background: rgba(139,92,246,0.3); color: #ddd6fe; }
+  .status-chosen     { background: rgba(34,197,94,0.3); color: #bbf7d0; }
+  .status-rejected   { background: rgba(82,82,91,0.35); color: #a1a1aa; }
+  .status-deferred   { background: rgba(245,158,11,0.3); color: #fde68a; }
+  .status-open       { background: rgba(244,114,182,0.3); color: #fbcfe8; }
+
+  /* ── Type badge ── */
+  .type-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    flex-shrink: 0;
+  }
+  .type-outcome    { background: rgba(52,211,153,0.12); color: var(--outcome); }
+  .type-opportunity { background: rgba(96,165,250,0.12); color: var(--opportunity); }
+  .type-solution   { background: rgba(167,139,250,0.12); color: var(--solution); }
+  .type-experiment { background: rgba(251,191,36,0.12); color: var(--experiment); }
+  .type-decision   { background: rgba(34,211,238,0.12); color: var(--decision); }
+  .type-question   { background: rgba(244,114,182,0.12); color: var(--question); }
+
+  /* ── Mono ── */
+  .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+
+  /* ════════════════════════════════════════
+     VIEW A: Tree + Detail (two-panel)
+     ════════════════════════════════════════ */
+  #view-tree {
+    flex-direction: row;
+  }
+  .tree-panel {
+    width: 420px;
+    min-width: 320px;
+    border-right: 1px solid #2d2d3a;
+    overflow-y: auto;
+    padding: 20px 0;
+  }
+  .tree-panel::-webkit-scrollbar { width: 4px; }
+  .tree-panel::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 2px; }
+
+  .resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+    transition: background 0.15s;
+  }
+  .resize-handle:hover,
+  .resize-handle.dragging {
+    background: #3b82f6;
+  }
+  .resize-handle::before {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+  }
+
+  .detail-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 40px;
+  }
+  .detail-panel::-webkit-scrollbar { width: 4px; }
+  .detail-panel::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 2px; }
+
+  /* Tree nodes */
+  .tree-section {
+    margin-bottom: 16px;
+  }
+  .tree-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #8b8b95;
+    padding: 6px 24px;
+    margin-bottom: 2px;
+    margin-top: 4px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.15s;
+  }
+  .tree-section-label:hover {
+    color: #d4d4dc;
+  }
+  .tree-section-label .chevron {
+    font-size: 11px;
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+  .tree-section-label.collapsed .chevron {
+    transform: rotate(-90deg);
+  }
+  .tree-section-label .section-count {
+    font-size: 11px;
+    color: #8b8b95;
+    font-weight: 400;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    opacity: 0.6;
+  }
+  .tree-node {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: background 0.1s, opacity 0.15s;
+  }
+  .tree-node .node-expand {
+    display: flex;
+    align-items: center;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .tree-node .node-expand .chevron {
+    font-size: 11px;
+    color: #8b8b95;
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+  .tree-node.collapsed .node-expand .chevron {
+    transform: rotate(-90deg);
+  }
+  .tree-node:hover {
+    background: #141419;
+  }
+  .tree-node.selected {
+    background: var(--select-bg);
+  }
+  .tree-node.ancestor {
+    border-left: 3px solid var(--node-color, #52525b);
+  }
+  .tree-opp-label.ancestor {
+    border-left: 3px solid var(--node-color, #52525b);
+  }
+  .tree-node .node-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .tree-node .node-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+  }
+  .tree-node .node-type {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #e4e4e7 !important;
+    opacity: 0.5;
+  }
+  .tree-node.emphasis .node-type { opacity: 0.8; }
+  .tree-node .node-title {
+    font-size: 13px;
+    color: #8b8b95;
+    line-height: 1.4;
+  }
+  .tree-node.selected .node-title {
+    color: #e4e4e7;
+  }
+  .tree-node .node-status {
+    margin-left: auto;
+  }
+  /* Indentation */
+  .tree-indent-1.tree-indent-1 { padding-left: 38px; }
+  .tree-indent-2.tree-indent-2 { padding-left: 66px; }
+  .tree-indent-3.tree-indent-3 { padding-left: 94px; }
+  .tree-indent-4.tree-indent-4 { padding-left: 122px; }
+
+  /* ── Active/exploring items get emphasis ── */
+  .tree-node.emphasis {
+    background: var(--emphasis-bg);
+  }
+  .tree-node.emphasis .node-title {
+    color: #e4e4e7;
+  }
+  .tree-node.selected .node-title {
+    font-weight: 500;
+  }
+  .tree-node.emphasis:hover {
+    background: var(--emphasis-hover);
+  }
+  .tree-node.emphasis.selected {
+    background: var(--select-bg);
+  }
+
+  /* ── Opportunity group label ── */
+  .tree-opp-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    margin-top: 8px;
+    cursor: pointer;
+    border-top: 1px solid #2d2d3a;
+    transition: background 0.1s;
+  }
+  .tree-opp-label:first-of-type {
+    border-top: none;
+  }
+  .tree-opp-label:hover {
+    background: #141419;
+  }
+  .tree-opp-label.opp-active {
+    background: rgba(96,165,250,0.04);
+  }
+  .tree-opp-label .opp-expand {
+    display: flex;
+    align-items: center;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .tree-opp-label .opp-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+  }
+  .tree-opp-label .opp-type {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--opportunity);
+    opacity: 0.5;
+  }
+  .tree-opp-label.opp-active .opp-type { opacity: 0.7; }
+  .tree-opp-label .opp-title {
+    font-size: 13px;
+    color: #d4d4dc;
+    line-height: 1.4;
+  }
+  .tree-opp-label.opp-active .opp-title {
+    color: #f4f4f5;
+  }
+  .tree-opp-label.selected .opp-title {
+    font-weight: 600;
+  }
+  .tree-opp-label .section-count {
+    font-size: 11px;
+    color: #8b8b95;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    opacity: 0.6;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .tree-opp-label.collapsed .chevron {
+    transform: rotate(-90deg);
+  }
+  .tree-opp-label .chevron {
+    font-size: 11px;
+    color: #8b8b95;
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+  .tree-opp-label.selected {
+    background: var(--select-bg);
+  }
+
+  /* ── Sub-section labels (Experiments under a solution) ── */
+  .tree-sub-label {
+    font-size: 11px;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+
+  /* Detail panel content */
+  .detail-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #b4b4bc;
+    font-size: 14px;
+  }
+  .detail-type-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #71717a;
+    margin-bottom: 4px;
+  }
+  .detail-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .detail-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f4f4f5;
+    flex: 1;
+    min-width: 0;
+  }
+  .detail-status-text {
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .detail-date {
+    font-size: 12px;
+    color: #8b8b95;
+    margin-bottom: 24px;
+  }
+  .detail-section {
+    margin-bottom: 24px;
+  }
+  .detail-section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #8b8b95;
+    margin-bottom: 8px;
+  }
+  .detail-reasoning {
+    font-size: 14px;
+    color: #e4e4e7;
+    line-height: 1.7;
+  }
+  .detail-evidence {
+    border-left: 2px solid #2a2a35;
+    padding: 8px 16px;
+    margin-bottom: 8px;
+    border-radius: 0 4px 4px 0;
+    background: #111116;
+  }
+  .detail-evidence .quote {
+    font-size: 13px;
+    color: #e4e4e7;
+    font-style: italic;
+    line-height: 1.6;
+  }
+  .detail-evidence .attribution {
+    font-size: 12px;
+    color: #b4b4bc;
+    margin-top: 4px;
+  }
+  .detail-related {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .detail-related-link {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    color: #b4b4bc;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .detail-related-link:hover {
+    border-color: #3a3a48;
+    color: #e4e4e7;
+  }
+  .detail-artifact {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    color: #60a5fa;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .detail-artifact:hover {
+    border-color: #60a5fa44;
+    background: rgba(96,165,250,0.06);
+  }
+  .detail-open-items {
+    list-style: none;
+  }
+  .detail-open-items li {
+    font-size: 13px;
+    color: #b4b4bc;
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .detail-open-items li::before {
+    content: '?';
+    position: absolute;
+    left: 0;
+    color: var(--question);
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  /* ── Detail child cards ── */
+  .detail-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .detail-card {
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .detail-card:hover {
+    border-color: #3a3a48;
+    background: #1a1a22;
+  }
+  .detail-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .detail-card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #f4f4f5;
+  }
+  .detail-card-reasoning {
+    font-size: 14px;
+    color: #e4e4e7;
+    line-height: 1.6;
+  }
+
+  /* ── Detail breadcrumb ── */
+  .detail-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .breadcrumb-segment {
+    font-size: 12px;
+    cursor: pointer;
+    transition: filter 0.15s;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .breadcrumb-segment:hover {
+    filter: brightness(1.4);
+  }
+  .breadcrumb-separator {
+    font-size: 11px;
+    color: #52525b;
+    flex-shrink: 0;
+  }
+
+  /* ════════════════════════════════════════
+     VIEW B: Graph (node-and-edge)
+     ════════════════════════════════════════ */
+  #view-graph {
+    position: relative;
+    flex: 1;
+  }
+  #graph-canvas {
+    position: absolute;
+    inset: 0;
+  }
+  #graph-canvas svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .graph-node {
+    cursor: pointer;
+  }
+  .graph-node rect {
+    rx: 6;
+    ry: 6;
+    stroke-width: 1.5;
+    transition: stroke-width 0.15s;
+  }
+  .graph-node:hover rect {
+    stroke-width: 2.5;
+  }
+  .graph-node text {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    fill: #e4e4e7;
+  }
+  .graph-edge path {
+    fill: none;
+    stroke-width: 1.5;
+  }
+  .graph-edge.parent path {
+    stroke: #2a2a35;
+  }
+  .graph-edge.related path {
+    stroke: #2a2a3566;
+    stroke-dasharray: 4 3;
+  }
+  .graph-edge marker path {
+    fill: #2a2a35;
+  }
+  .graph-tooltip {
+    position: absolute;
+    max-width: 360px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    font-size: 13px;
+    color: #b4b4bc;
+    line-height: 1.5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 10;
+  }
+  .graph-tooltip.visible { opacity: 1; }
+  .graph-tooltip .tt-title {
+    font-weight: 600;
+    color: #f4f4f5;
+    margin-bottom: 4px;
+  }
+  .graph-tooltip .tt-status {
+    margin-bottom: 6px;
+  }
+  .graph-controls {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    gap: 4px;
+  }
+  .graph-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    color: #b4b4bc;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .graph-btn:hover {
+    color: #e4e4e7;
+    border-color: #3a3a48;
+  }
+
+  /* ════════════════════════════════════════
+     VIEW C: Timeline
+     ════════════════════════════════════════ */
+  #view-timeline {
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 32px 48px;
+  }
+  #view-timeline::-webkit-scrollbar { width: 4px; }
+  #view-timeline::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 2px; }
+
+  .timeline-container {
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+    padding-left: 40px;
+  }
+  .timeline-line {
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #1e1e26;
+  }
+  .timeline-group {
+    margin-bottom: 32px;
+  }
+  .timeline-date {
+    font-size: 12px;
+    font-weight: 700;
+    color: #8b8b95;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .timeline-date::before {
+    content: '';
+    position: absolute;
+    left: -33px;
+    top: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3a3a48;
+    border: 2px solid #0a0a0f;
+  }
+  .timeline-entry {
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    margin-bottom: 8px;
+    position: relative;
+    transition: border-color 0.15s;
+  }
+  .timeline-entry:hover {
+    border-color: #3a3a48;
+  }
+  .timeline-entry::before {
+    content: '';
+    position: absolute;
+    left: -25px;
+    top: 18px;
+    width: 10px;
+    height: 2px;
+    background: #1e1e26;
+  }
+  .timeline-entry-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .timeline-entry-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f4f4f5;
+  }
+  .timeline-entry-reasoning {
+    font-size: 13px;
+    color: #b4b4bc;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .timeline-entry-evidence {
+    border-left: 2px solid #2a2a35;
+    padding: 6px 12px;
+    margin-top: 8px;
+    background: #0d0d14;
+    border-radius: 0 4px 4px 0;
+  }
+  .timeline-entry-evidence .quote {
+    font-size: 12px;
+    color: #b4b4bc;
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .timeline-entry-evidence .attribution {
+    font-size: 12px;
+    color: #8b8b95;
+    margin-top: 2px;
+  }
+
+  /* ════════════════════════════════════════
+     VIEW D: Reader
+     ════════════════════════════════════════ */
+  #view-reader {
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 40px 48px;
+  }
+  #view-reader::-webkit-scrollbar { width: 4px; }
+  #view-reader::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 2px; }
+
+  .reader-container {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .reader-section {
+    margin-bottom: 40px;
+  }
+  .reader-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2d2d3a;
+  }
+  .reader-section-title {
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .reader-section-count {
+    font-size: 12px;
+    color: #8b8b95;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .reader-card {
+    padding: 16px 20px;
+    border-radius: 8px;
+    border: 1px solid #2a2a35;
+    background: #141419;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+  }
+  .reader-card:hover {
+    border-color: #3a3a48;
+  }
+  .reader-card.rejected {
+    opacity: 0.55;
+  }
+  .reader-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .reader-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #f4f4f5;
+  }
+  .reader-card-date {
+    font-size: 12px;
+    color: #b4b4bc;
+    margin-left: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .reader-card-reasoning {
+    font-size: 13px;
+    color: #b4b4bc;
+    line-height: 1.7;
+    margin-bottom: 10px;
+  }
+  .reader-card-evidence {
+    border-left: 2px solid #2a2a35;
+    padding: 8px 14px;
+    margin-bottom: 8px;
+    background: #0d0d14;
+    border-radius: 0 4px 4px 0;
+  }
+  .reader-card-evidence .quote {
+    font-size: 12px;
+    color: #b4b4bc;
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .reader-card-evidence .attribution {
+    font-size: 12px;
+    color: #8b8b95;
+    margin-top: 3px;
+  }
+  .reader-card-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  /* ── Stats summary ── */
+  .stats-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 32px;
+    border-bottom: 1px solid #2d2d3a;
+    background: #0d0d14;
+    flex-shrink: 0;
+  }
+  .stats-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stats-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+  /* ── Filter select ── */
+  .filter-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: #111116;
+    border: 1px solid #2d2d3a;
+    border-radius: 4px;
+    color: #b4b4bc;
+    font-size: 12px;
+    padding: 4px 24px 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 0.15s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b8b95'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  .filter-select:hover { border-color: #3a3a48; }
+  .filter-select:focus { outline: none; border-color: #3b82f6; }
+  .filter-select.has-filter { border-color: #3b82f666; color: #e4e4e7; }
+
+  /* ── Active-only toggle ── */
+  .toggle {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    border-radius: 8px;
+    background: #2a2a35;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: #3b82f6; }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #e4e4e7;
+    transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+  .toggle-label {
+    font-size: 12px;
+    color: #8b8b95;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+  }
+  .toggle-label.on { color: #a1a1aa; }
+
+  /* ── Tree node states ── */
+  .tree-node.dimmed {
+    opacity: 0.2;
+  }
+  .tree-node.hidden {
+    display: none;
+  }
+  .tree-node.inactive {
+    opacity: 0.45;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-left">
+    <h1 id="title">Product Decision Journal</h1>
+    <span class="project" id="project"></span>
+  </div>
+  <span class="updated" id="updated"></span>
+</div>
+
+<div class="tab-bar" id="tabBar">
+  <div class="tab active" data-view="tree" onclick="switchView('tree')">Tree</div>
+  <div class="tab" data-view="graph" onclick="switchView('graph')">Graph</div>
+  <div class="tab" data-view="timeline" onclick="switchView('timeline')">Timeline</div>
+  <div class="tab" data-view="reader" onclick="switchView('reader')">Reader</div>
+</div>
+
+<div class="stats-row" id="statsRow"></div>
+
+<!-- View A: Tree + Detail -->
+<div class="view active" id="view-tree">
+  <div class="tree-panel" id="treePanel"></div>
+  <div class="resize-handle" id="resizeHandle"></div>
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-empty">Select a node to view details</div>
+  </div>
+</div>
+
+<!-- View B: Graph -->
+<div class="view" id="view-graph">
+  <div id="graph-canvas"></div>
+  <div class="graph-tooltip" id="graphTooltip"></div>
+  <div class="graph-controls">
+    <button class="graph-btn" onclick="graphZoom(1.3)" title="Zoom in">+</button>
+    <button class="graph-btn" onclick="graphZoom(0.7)" title="Zoom out">-</button>
+    <button class="graph-btn" onclick="graphFit()" title="Fit to view">&#8718;</button>
+  </div>
+</div>
+
+<!-- View C: Timeline -->
+<div class="view" id="view-timeline">
+  <div class="timeline-container" id="timelineContainer">
+    <div class="timeline-line"></div>
+  </div>
+</div>
+
+<!-- View D: Reader -->
+<div class="view" id="view-reader">
+  <div class="reader-container" id="readerContainer"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let DATA = null;
+let allNodes = [];
+let selectedNodeId = null;
+let currentView = 'tree';
+let graphZoomBehavior = null;
+let graphSvgGroup = null;
+let activeFilter = null;   // status filter from clicking stat chips
+let activeOnly = true;      // toggle to hide rejected/deferred
+let detailNodeId = null;     // what detail panel shows (may differ from tree selection during drill-down)
+const ACTIVE_STATUSES = ['active', 'exploring', 'chosen', 'open'];
+
+const TYPE_COLORS = {
+  outcome: '#34d399',
+  opportunity: '#60a5fa',
+  solution: '#a78bfa',
+  experiment: '#fbbf24',
+  decision: '#22d3ee',
+  question: '#f472b6',
+};
+const STATUS_COLORS = {
+  active: '#3b82f6',
+  exploring: '#8b5cf6',
+  chosen: '#22c55e',
+  rejected: '#52525b',
+  deferred: '#f59e0b',
+  open: '#f472b6',
+};
+
+// ══════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════
+async function loadData() {
+  try {
+    const resp = await fetch('product-decisions.json');
+    DATA = await resp.json();
+  } catch (e) {
+    document.body.innerHTML = '<p style="color:#f87171;padding:40px">Could not load product-decisions.json</p>';
+    return;
+  }
+  buildNodeIndex();
+  renderAll();
+}
+
+function buildNodeIndex() {
+  allNodes = [];
+  const sections = ['outcomes', 'opportunities', 'solutions', 'experiments', 'decisions', 'openQuestions'];
+  const typeMap = {
+    outcomes: 'outcome',
+    opportunities: 'opportunity',
+    solutions: 'solution',
+    experiments: 'experiment',
+    decisions: 'decision',
+    openQuestions: 'question',
+  };
+  for (const section of sections) {
+    if (!DATA[section]) continue;
+    for (const item of DATA[section]) {
+      allNodes.push({ ...item, _type: typeMap[section] });
+    }
+  }
+}
+
+function getNode(id) {
+  return allNodes.find(n => n.id === id);
+}
+
+function getChildren(id) {
+  return allNodes.filter(n => n.parentId === id);
+}
+
+// ══════════════════════════════════════════
+// VIEW SWITCHING
+// ══════════════════════════════════════════
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  if (view === 'graph') renderGraph();
+}
+
+// ══════════════════════════════════════════
+// STATS BAR
+// ══════════════════════════════════════════
+function renderStats() {
+  const row = document.getElementById('statsRow');
+  const statusCounts = {};
+  for (const n of allNodes) {
+    if (n.status) statusCounts[n.status] = (statusCounts[n.status] || 0) + 1;
+  }
+  let html = '';
+  // Left: Active only toggle
+  html += `<div class="stats-left">`;
+  html += `<button class="toggle${activeOnly ? ' on' : ''}" id="activeToggle" onclick="toggleActiveOnly()"></button>`;
+  html += `<span class="toggle-label${activeOnly ? ' on' : ''}" onclick="toggleActiveOnly()">Active only</span>`;
+  html += `</div>`;
+  // Right: Filter dropdown
+  html += `<div class="stats-right">`;
+  const statusOrder = ['active', 'exploring', 'chosen', 'deferred', 'rejected', 'open'];
+  html += `<select class="filter-select${activeFilter ? ' has-filter' : ''}" id="filterSelect" onchange="setFilter(this.value)">`;
+  html += `<option value="">All statuses</option>`;
+  for (const status of statusOrder) {
+    const count = statusCounts[status] || 0;
+    if (!count) continue;
+    html += `<option value="${status}"${activeFilter === status ? ' selected' : ''}>${status} (${count})</option>`;
+  }
+  html += `</select>`;
+  html += `</div>`;
+  row.innerHTML = html;
+}
+
+function setFilter(status) {
+  activeFilter = status || null;
+  renderStats();
+  applyFilters();
+}
+
+function toggleFilter(status) {
+  activeFilter = activeFilter === status ? null : status;
+  renderStats();
+  applyFilters();
+}
+
+function toggleActiveOnly() {
+  activeOnly = !activeOnly;
+  renderStats();
+  applyFilters();
+}
+
+function applyFilters() {
+  document.querySelectorAll('.tree-node[data-status]').forEach(el => {
+    const status = el.dataset.status;
+    const isActive = ACTIVE_STATUSES.includes(status);
+
+    // Hidden: activeOnly is on and this isn't active
+    const hidden = activeOnly && !isActive;
+    // Dimmed: a specific filter is set and this doesn't match
+    const dimmed = activeFilter && status !== activeFilter;
+    // Inactive: no filter set, but this is rejected/deferred (subtle dim)
+    const inactive = !activeFilter && !activeOnly && (status === 'rejected' || status === 'deferred');
+
+    el.classList.toggle('hidden', hidden);
+    el.classList.toggle('dimmed', dimmed);
+    el.classList.toggle('inactive', inactive);
+  });
+}
+
+// ══════════════════════════════════════════
+// VIEW A: TREE + DETAIL
+// ══════════════════════════════════════════
+function renderTree() {
+  const panel = document.getElementById('treePanel');
+  let html = '';
+
+  const outcomes = allNodes.filter(n => n._type === 'outcome');
+  const decisions = allNodes.filter(n => n._type === 'decision');
+  const questions = allNodes.filter(n => n._type === 'question');
+
+  // Shallow tree: outcomes and opportunities
+  for (const outcome of outcomes) {
+    html += staticSectionLabel('Outcome', 'outcome');
+    html += treeNodeHTML(outcome, 0, false, true, true); // collapsible, hide type label
+
+    const opportunities = getChildren(outcome.id).filter(n => n._type === 'opportunity');
+    for (const opp of opportunities) {
+      html += treeNodeHTML(opp, 1);
+    }
+  }
+
+  // Cross-cutting sections
+  if (decisions.length) {
+    html += sectionLabel('Decisions', 'decision', true);
+    for (const d of decisions) {
+      html += treeNodeHTML(d, 0, false, false, true);
+    }
+  }
+
+  if (questions.length) {
+    html += sectionLabel('Open Questions', 'question', true);
+    for (const q of questions) {
+      html += treeNodeHTML(q, 0, false, false, true);
+    }
+  }
+
+  panel.innerHTML = html;
+
+  // Auto-collapse sections marked startCollapsed
+  panel.querySelectorAll('[data-start-collapsed="true"]').forEach(el => {
+    collapseSection(el);
+  });
+
+  panel.querySelectorAll('.tree-node').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (el.classList.contains('collapsible') && e.target.closest('.node-expand')) {
+        toggleCollapsibleNode(el);
+      } else {
+        selectNode(el.dataset.id);
+      }
+    });
+  });
+}
+
+// Static section label (no collapse affordance)
+function staticSectionLabel(text, type) {
+  const color = TYPE_COLORS[type] || '#52525b';
+  return `<div class="tree-section-label" style="color:${color};cursor:default">${text}</div>`;
+}
+
+// Collapsible section label (for Decisions, Open Questions)
+function sectionLabel(text, type, startCollapsed) {
+  const color = TYPE_COLORS[type] || '#52525b';
+  return `<div class="tree-section-label" style="color:${color}" data-start-collapsed="${!!startCollapsed}" onclick="toggleSection(this)"><span class="chevron">&#9660;</span>${text}</div>`;
+}
+
+function toggleSection(labelEl) {
+  const isCollapsed = labelEl.classList.toggle('collapsed');
+  setSectionVisibility(labelEl, isCollapsed);
+}
+
+function collapseSection(labelEl) {
+  labelEl.classList.add('collapsed');
+  setSectionVisibility(labelEl, true);
+}
+
+function setSectionVisibility(labelEl, hidden) {
+  let el = labelEl.nextElementSibling;
+  while (el) {
+    if (el.classList.contains('tree-section-label')) break;
+    if (el.classList.contains('tree-node') || el.classList.contains('tree-opp-label')) {
+      el.style.display = hidden ? 'none' : '';
+    }
+    el = el.nextElementSibling;
+  }
+}
+
+
+function toggleCollapsibleNode(nodeEl) {
+  const isCollapsed = nodeEl.classList.toggle('collapsed');
+  let el = nodeEl.nextElementSibling;
+  while (el) {
+    // Stop at next collapsible node or top-level section label
+    if (el.classList.contains('collapsible')) break;
+    if (el.classList.contains('tree-section-label') && !el.classList.contains('tree-sub-label')) break;
+
+    el.style.display = isCollapsed ? 'none' : '';
+    el = el.nextElementSibling;
+  }
+}
+
+
+function treeNodeHTML(node, indent, startHidden, collapsible, hideTypeLabel) {
+  const color = TYPE_COLORS[node._type] || '#52525b';
+  const isEmphasis = node.status === 'active' || node.status === 'exploring';
+  const isSettled = node.status === 'rejected' || node.status === 'deferred';
+  const showStatus = node.status && !isSettled;
+
+  let classes = 'tree-node';
+  if (indent) classes += ` tree-indent-${Math.min(indent, 4)}`;
+  if (isEmphasis) classes += ' emphasis';
+  if (isSettled && !activeFilter && !activeOnly) classes += ' inactive';
+  if (collapsible) classes += ' collapsible';
+
+  let style = `--node-color:${color};--select-bg:${color}2e;`;
+  if (isEmphasis) {
+    style += `--emphasis-color:${color}88;--emphasis-bg:${color}08;--emphasis-hover:${color}0f;`;
+  }
+  if (startHidden) style += 'display:none;';
+
+  const typeLabel = hideTypeLabel ? '' : (node._type || '');
+  const chevronHTML = collapsible ? `<div class="node-expand"><span class="chevron">&#9660;</span></div>` : '';
+  const dotHTML = node._type === 'outcome' ? '' : `<div class="node-dot" style="background:${color};${isEmphasis ? 'box-shadow:0 0 6px ' + color + '66' : ''}"></div>`;
+  const statusAttr = node.status ? ` data-status="${node.status}"` : '';
+  return `<div class="${classes}" data-id="${node.id}"${statusAttr} style="${style}">
+    ${chevronHTML}
+    ${dotHTML}
+    <div class="node-content">
+      ${typeLabel ? `<span class="node-type" style="color:${color}">${typeLabel}</span>` : ''}
+      <span class="node-title">${node.title}</span>
+    </div>
+    ${showStatus ? `<span class="status-badge status-${node.status}">${node.status}</span>` : ''}
+  </div>`;
+}
+
+function getAncestorIds(id) {
+  const ids = [];
+  let node = getNode(id);
+  while (node && node.parentId) {
+    ids.push(node.parentId);
+    node = getNode(node.parentId);
+  }
+  return ids;
+}
+
+function selectNode(id) {
+  selectedNodeId = id;
+  detailNodeId = id;
+  highlightTree(id);
+  renderDetail(id);
+}
+
+// Drill into a node that's NOT in the tree (solution, experiment, decision)
+// Keeps the nearest tree-level ancestor highlighted in the left panel
+function drillToNode(id) {
+  detailNodeId = id;
+  // Walk up to find nearest ancestor that's in the tree (outcome or opportunity)
+  const treeTypes = ['outcome', 'opportunity'];
+  let node = getNode(id);
+  let treeAncestor = null;
+  while (node) {
+    if (treeTypes.includes(node._type)) {
+      treeAncestor = node.id;
+      break;
+    }
+    node = node.parentId ? getNode(node.parentId) : null;
+  }
+  if (treeAncestor) {
+    selectedNodeId = treeAncestor;
+  }
+  highlightTree(selectedNodeId);
+  renderDetail(id);
+}
+
+function highlightTree(id) {
+  const ancestorIds = getAncestorIds(id);
+  document.querySelectorAll('.tree-node').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+    el.classList.toggle('ancestor', ancestorIds.includes(el.dataset.id));
+  });
+}
+
+function renderChildCard(child, borderColor) {
+  const treeTypes = ['outcome', 'opportunity'];
+  const clickFn = treeTypes.includes(child._type) ? 'selectNode' : 'drillToNode';
+  let h = '';
+  h += `<div class="detail-card" onclick="${clickFn}('${child.id}')" style="border-color:${borderColor}22">`;
+  h += `<div class="detail-card-header">`;
+  h += `<span class="status-badge status-${child.status}">${child.status}</span>`;
+  h += `</div>`;
+  h += `<div class="detail-card-title">${child.title}</div>`;
+  if (child.reasoning) h += `<div class="detail-card-reasoning">${child.reasoning}</div>`;
+  // Evidence
+  if (child.evidence && child.evidence.length) {
+    for (const ev of child.evidence) {
+      h += `<div class="detail-evidence" style="margin-top:8px">`;
+      h += `<div class="quote">"${ev.quote}"</div>`;
+      h += `<div class="attribution">${ev.type} — ${ev.source}</div>`;
+      h += `</div>`;
+    }
+  }
+  // Artifact
+  if (child.artifact) {
+    h += `<a class="detail-artifact" style="margin-top:8px" href="${child.artifact}" target="_blank" onclick="event.stopPropagation()">&#9654; ${child.artifact}</a>`;
+  }
+  // Open items
+  if (child.openItems && child.openItems.length) {
+    h += `<ul class="detail-open-items" style="margin-top:8px">`;
+    for (const item of child.openItems) {
+      h += `<li>${item}</li>`;
+    }
+    h += `</ul>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function renderDetail(id) {
+  const panel = document.getElementById('detailPanel');
+  const node = getNode(id);
+  if (!node) {
+    panel.innerHTML = '<div class="detail-empty">Node not found</div>';
+    return;
+  }
+
+  const typeColor = TYPE_COLORS[node._type] || '#52525b';
+  let html = '';
+
+  // Breadcrumb — show ancestor chain for navigation back up
+  const ancestors = [];
+  let walk = node;
+  while (walk.parentId) {
+    const parent = getNode(walk.parentId);
+    if (parent) ancestors.unshift(parent);
+    walk = parent || {};
+  }
+  if (ancestors.length > 0) {
+    const treeTypes = ['outcome', 'opportunity'];
+    html += '<div class="detail-breadcrumb">';
+    for (const anc of ancestors) {
+      const ancColor = TYPE_COLORS[anc._type] || '#8b8b95';
+      const clickFn = treeTypes.includes(anc._type) ? 'selectNode' : 'drillToNode';
+      html += `<span class="breadcrumb-segment" style="color:${ancColor}" onclick="${clickFn}('${anc.id}')">${anc.title}</span>`;
+      html += `<span class="breadcrumb-separator">›</span>`;
+    }
+    html += '</div>';
+  }
+
+  // Header — type label above title as plain text
+  const statusColor = STATUS_COLORS[node.status] || '#8b8b95';
+  html += `<div class="detail-type-label">${node._type}</div>`;
+  html += `<div class="detail-header">`;
+  html += `<div class="detail-title" style="color:${typeColor}">${node.title}</div>`;
+  html += `<span class="detail-status-text" style="color:${statusColor}">${node.status}</span>`;
+  html += `</div>`;
+  html += `<div class="detail-date">${node.id}${node.date ? ' · ' + node.date : ''}</div>`;
+
+  // Reasoning
+  if (node.reasoning) {
+    html += `<div class="detail-section">`;
+    html += `<div class="detail-section-label">Reasoning</div>`;
+    html += `<div class="detail-reasoning">${node.reasoning}</div>`;
+    html += `</div>`;
+  }
+
+  // Context (for questions)
+  if (node.context) {
+    html += `<div class="detail-section">`;
+    html += `<div class="detail-section-label">Context</div>`;
+    html += `<div class="detail-reasoning">${node.context}</div>`;
+    html += `</div>`;
+  }
+
+  // Evidence
+  if (node.evidence && node.evidence.length) {
+    html += `<div class="detail-section">`;
+    html += `<div class="detail-section-label">Evidence</div>`;
+    for (const ev of node.evidence) {
+      html += `<div class="detail-evidence">`;
+      html += `<div class="quote">"${ev.quote}"</div>`;
+      html += `<div class="attribution">${ev.type} — ${ev.source}</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Open items
+  if (node.openItems && node.openItems.length) {
+    html += `<div class="detail-section">`;
+    html += `<div class="detail-section-label">Open Items</div>`;
+    html += `<ul class="detail-open-items">`;
+    for (const item of node.openItems) {
+      html += `<li>${item}</li>`;
+    }
+    html += `</ul></div>`;
+  }
+
+  // Artifact link
+  if (node.artifact) {
+    html += `<div class="detail-section">`;
+    html += `<div class="detail-section-label">Artifact</div>`;
+    html += `<a class="detail-artifact" href="${node.artifact}" target="_blank">&#9654; ${node.artifact}</a>`;
+    html += `</div>`;
+  }
+
+  // Child cards — progressive drill-down
+  // outcome → opportunities, opportunity → solutions, solution → experiments
+  const childTypeMap = { outcome: 'opportunity', opportunity: 'solution', solution: 'experiment' };
+  const childType = childTypeMap[node._type];
+  if (childType) {
+    const children = getChildren(node.id)
+      .filter(n => n._type === childType && (!activeOnly || ACTIVE_STATUSES.includes(n.status)));
+    if (children.length) {
+      const childColor = TYPE_COLORS[childType] || '#52525b';
+      const label = childType === 'opportunity' ? 'Opportunities'
+        : childType.charAt(0).toUpperCase() + childType.slice(1) + 's';
+      html += `<div class="detail-section">`;
+      html += `<div class="detail-section-label">${label}</div>`;
+      html += `<div class="detail-cards">`;
+      for (const child of children) {
+        html += renderChildCard(child, childColor);
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  // For outcomes: also show cross-cutting solutions (solutions directly under outcome)
+  if (node._type === 'outcome') {
+    const crossCutting = getChildren(node.id)
+      .filter(n => n._type === 'solution' && (!activeOnly || ACTIVE_STATUSES.includes(n.status)));
+    if (crossCutting.length) {
+      const solColor = TYPE_COLORS['solution'] || '#52525b';
+      html += `<div class="detail-section">`;
+      html += `<div class="detail-section-label">Cross-cutting Solutions</div>`;
+      html += `<div class="detail-cards">`;
+      for (const sol of crossCutting) {
+        html += renderChildCard(sol, solColor);
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  panel.innerHTML = html;
+}
+
+// ══════════════════════════════════════════
+// VIEW B: GRAPH
+// ══════════════════════════════════════════
+function renderGraph() {
+  const container = document.getElementById('graph-canvas');
+  container.innerHTML = '';
+
+  // Build dagre graph
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: 'TB', ranksep: 60, nodesep: 40, marginx: 40, marginy: 40 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  // Add nodes
+  for (const node of allNodes) {
+    const label = `${node.id}: ${node.title}`;
+    const truncated = label.length > 36 ? label.slice(0, 33) + '...' : label;
+    g.setNode(node.id, { label: truncated, width: 220, height: 44, _node: node });
+  }
+
+  // Add edges
+  for (const node of allNodes) {
+    if (node.parentId && getNode(node.parentId)) {
+      g.setEdge(node.parentId, node.id, { _type: 'parent' });
+    }
+    if (node.relatedIds) {
+      for (const rid of node.relatedIds) {
+        if (getNode(rid) && !g.hasEdge(node.id, rid) && !g.hasEdge(rid, node.id)) {
+          g.setEdge(node.id, rid, { _type: 'related' });
+        }
+      }
+    }
+  }
+
+  dagre.layout(g);
+
+  // Render with D3
+  const graphInfo = g.graph();
+  const svg = d3.select(container).append('svg')
+    .attr('width', '100%')
+    .attr('height', '100%');
+
+  const defs = svg.append('defs');
+  defs.append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 0 10 10')
+    .attr('refX', 9)
+    .attr('refY', 5)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto-start-reverse')
+    .append('path')
+    .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+    .attr('fill', '#2a2a35');
+
+  const gRoot = svg.append('g');
+  graphSvgGroup = gRoot;
+
+  // Zoom
+  graphZoomBehavior = d3.zoom()
+    .scaleExtent([0.2, 3])
+    .on('zoom', (event) => gRoot.attr('transform', event.transform));
+  svg.call(graphZoomBehavior);
+
+  // Edges
+  g.edges().forEach(e => {
+    const edge = g.edge(e);
+    const isRelated = edge._type === 'related';
+    const points = edge.points;
+    const line = d3.line().x(d => d.x).y(d => d.y).curve(d3.curveBasis);
+    gRoot.append('g')
+      .attr('class', `graph-edge ${isRelated ? 'related' : 'parent'}`)
+      .append('path')
+      .attr('d', line(points))
+      .attr('marker-end', isRelated ? '' : 'url(#arrow)');
+  });
+
+  // Nodes
+  const tooltip = document.getElementById('graphTooltip');
+
+  g.nodes().forEach(nId => {
+    const info = g.node(nId);
+    const node = info._node;
+    const color = TYPE_COLORS[node._type] || '#52525b';
+    const isRejected = node.status === 'rejected';
+
+    const group = gRoot.append('g')
+      .attr('class', 'graph-node')
+      .attr('transform', `translate(${info.x - info.width / 2}, ${info.y - info.height / 2})`)
+      .on('mouseenter', (event) => {
+        let ttHtml = `<div class="tt-title">${node.title}</div>`;
+        ttHtml += `<div class="tt-status"><span class="type-badge type-${node._type}">${node._type}</span> <span class="status-badge status-${node.status}">${node.status}</span></div>`;
+        if (node.reasoning) ttHtml += `<div>${node.reasoning.slice(0, 200)}${node.reasoning.length > 200 ? '...' : ''}</div>`;
+        tooltip.innerHTML = ttHtml;
+        tooltip.classList.add('visible');
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+        tooltip.style.top = (event.clientY - rect.top + 12) + 'px';
+      })
+      .on('mousemove', (event) => {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+        tooltip.style.top = (event.clientY - rect.top + 12) + 'px';
+      })
+      .on('mouseleave', () => tooltip.classList.remove('visible'))
+      .on('click', () => {
+        switchView('tree');
+        selectNode(node.id);
+      });
+
+    group.append('rect')
+      .attr('width', info.width)
+      .attr('height', info.height)
+      .attr('fill', isRejected ? '#111116' : color + '0d')
+      .attr('stroke', isRejected ? '#1e1e26' : color + '44')
+      .attr('opacity', isRejected ? 0.5 : 1);
+
+    // Type dot
+    group.append('circle')
+      .attr('cx', 14)
+      .attr('cy', info.height / 2)
+      .attr('r', 4)
+      .attr('fill', color)
+      .attr('opacity', isRejected ? 0.4 : 1);
+
+    // Label
+    group.append('text')
+      .attr('x', 26)
+      .attr('y', info.height / 2 + 1)
+      .attr('dominant-baseline', 'middle')
+      .attr('font-size', 11)
+      .attr('fill', isRejected ? '#52525b' : '#e4e4e7')
+      .text(info.label);
+  });
+
+  // Initial fit
+  requestAnimationFrame(graphFit);
+}
+
+function graphZoom(factor) {
+  const svg = d3.select('#graph-canvas svg');
+  svg.transition().duration(200).call(graphZoomBehavior.scaleBy, factor);
+}
+
+function graphFit() {
+  const svg = d3.select('#graph-canvas svg');
+  const svgEl = svg.node();
+  if (!svgEl || !graphSvgGroup) return;
+  const bounds = graphSvgGroup.node().getBBox();
+  const parent = svgEl.parentElement;
+  const fullWidth = parent.clientWidth;
+  const fullHeight = parent.clientHeight;
+  const width = bounds.width;
+  const height = bounds.height;
+  const midX = bounds.x + width / 2;
+  const midY = bounds.y + height / 2;
+  const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
+  const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
+  svg.transition().duration(400).call(
+    graphZoomBehavior.transform,
+    d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+  );
+}
+
+// ══════════════════════════════════════════
+// VIEW C: TIMELINE
+// ══════════════════════════════════════════
+function renderTimeline() {
+  const container = document.getElementById('timelineContainer');
+  // Keep the line element
+  container.innerHTML = '<div class="timeline-line"></div>';
+
+  // Sort all nodes by date
+  const dated = allNodes.filter(n => n.date).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Group by date
+  const groups = {};
+  for (const node of dated) {
+    if (!groups[node.date]) groups[node.date] = [];
+    groups[node.date].push(node);
+  }
+
+  for (const [date, nodes] of Object.entries(groups)) {
+    let html = `<div class="timeline-group">`;
+    html += `<div class="timeline-date">${date}</div>`;
+
+    for (const node of nodes) {
+      const color = TYPE_COLORS[node._type] || '#52525b';
+      html += `<div class="timeline-entry" style="border-left: 2px solid ${color}33">`;
+      html += `<div class="timeline-entry-header">`;
+      html += `<span class="type-badge type-${node._type}">${node._type}</span>`;
+      html += `<span class="status-badge status-${node.status}">${node.status}</span>`;
+      html += `<span class="timeline-entry-title">${node.title}</span>`;
+      html += `</div>`;
+      if (node.reasoning) {
+        html += `<div class="timeline-entry-reasoning">${node.reasoning}</div>`;
+      }
+      if (node.context) {
+        html += `<div class="timeline-entry-reasoning">${node.context}</div>`;
+      }
+      if (node.evidence && node.evidence.length) {
+        for (const ev of node.evidence) {
+          html += `<div class="timeline-entry-evidence">`;
+          html += `<div class="quote">"${ev.quote}"</div>`;
+          html += `<div class="attribution">${ev.type} — ${ev.source}</div>`;
+          html += `</div>`;
+        }
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+    container.innerHTML += html;
+  }
+}
+
+// ══════════════════════════════════════════
+// VIEW D: READER
+// ══════════════════════════════════════════
+function renderReader() {
+  const container = document.getElementById('readerContainer');
+  let html = '';
+
+  const sections = [
+    { key: 'outcomes', label: 'Outcomes', type: 'outcome' },
+    { key: 'opportunities', label: 'Opportunities', type: 'opportunity' },
+    { key: 'solutions', label: 'Solutions', type: 'solution' },
+    { key: 'experiments', label: 'Experiments', type: 'experiment' },
+    { key: 'decisions', label: 'Decisions', type: 'decision' },
+    { key: 'openQuestions', label: 'Open Questions', type: 'question' },
+  ];
+
+  for (const sec of sections) {
+    const items = DATA[sec.key];
+    if (!items || !items.length) continue;
+    const color = TYPE_COLORS[sec.type];
+
+    html += `<div class="reader-section">`;
+    html += `<div class="reader-section-header">`;
+    html += `<div class="reader-section-title" style="color:${color}">${sec.label}</div>`;
+    html += `<span class="reader-section-count">${items.length}</span>`;
+    html += `</div>`;
+
+    for (const item of items) {
+      const isRejected = item.status === 'rejected';
+      html += `<div class="reader-card${isRejected ? ' rejected' : ''}">`;
+      html += `<div class="reader-card-header">`;
+      html += `<span class="type-badge type-${sec.type}" style="font-size:11px">${item.id}</span>`;
+      html += `<span class="status-badge status-${item.status}">${item.status}</span>`;
+      html += `<span class="reader-card-title">${item.title}</span>`;
+      if (item.date) html += `<span class="reader-card-date">${item.date}</span>`;
+      html += `</div>`;
+
+      if (item.reasoning) {
+        html += `<div class="reader-card-reasoning">${item.reasoning}</div>`;
+      }
+      if (item.context) {
+        html += `<div class="reader-card-reasoning">${item.context}</div>`;
+      }
+
+      if (item.evidence && item.evidence.length) {
+        for (const ev of item.evidence) {
+          html += `<div class="reader-card-evidence">`;
+          html += `<div class="quote">"${ev.quote}"</div>`;
+          html += `<div class="attribution">${ev.type} — ${ev.source}</div>`;
+          html += `</div>`;
+        }
+      }
+
+      if (item.artifact) {
+        html += `<div class="reader-card-meta"><a class="detail-artifact" href="${item.artifact}" target="_blank">&#9654; ${item.artifact}</a></div>`;
+      }
+
+      if (item.openItems && item.openItems.length) {
+        html += `<ul class="detail-open-items" style="margin-top:8px">`;
+        for (const oi of item.openItems) html += `<li>${oi}</li>`;
+        html += `</ul>`;
+      }
+
+      // Related links
+      if (item.relatedIds && item.relatedIds.length) {
+        html += `<div class="reader-card-meta">`;
+        for (const rid of item.relatedIds) {
+          const rn = getNode(rid);
+          if (rn) html += `<span class="detail-related-link" style="cursor:default;font-size:12px">&#8596; ${rn.id}: ${rn.title}</span>`;
+        }
+        html += `</div>`;
+      }
+
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ══════════════════════════════════════════
+// RENDER ALL
+// ══════════════════════════════════════════
+function renderAll() {
+  document.getElementById('title').textContent = DATA.title;
+  document.getElementById('project').textContent = DATA.project;
+  const now = new Date();
+  const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  document.getElementById('updated').textContent = `${DATA.lastUpdated} · ${time}`;
+  renderStats();
+  renderTree();
+  applyFilters();
+  renderTimeline();
+  renderReader();
+  // Graph renders on-demand when tab is switched
+}
+
+// ══════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (activeFilter) {
+      activeFilter = null;
+      renderStats();
+      applyFilters();
+    }
+  }
+});
+
+// ══════════════════════════════════════════
+// RESIZE HANDLE
+// ══════════════════════════════════════════
+{
+  const handle = document.getElementById('resizeHandle');
+  const treePanel = document.getElementById('treePanel');
+  let dragging = false;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const container = document.getElementById('view-tree');
+    const rect = container.getBoundingClientRect();
+    const newWidth = Math.max(240, Math.min(e.clientX - rect.left, rect.width - 200));
+    treePanel.style.width = newWidth + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+}
+
+// ══════════════════════════════════════════
+// LIVE RELOAD (SSE)
+// ══════════════════════════════════════════
+(function() {
+  const es = new EventSource('/events');
+  es.addEventListener('reload', () => loadData());
+  es.onerror = () => {
+    // Server gone — stop retrying silently
+    es.close();
+  };
+})();
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+loadData();
+</script>
+
+</body>
+</html>

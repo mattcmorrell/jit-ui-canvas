@@ -1,0 +1,28 @@
+{
+  "title": "Product Decision Journal",
+  "project": "jit-ui-canvas",
+  "lastUpdated": "2026-03-13",
+  "outcomes": [],
+  "opportunities": [],
+  "solutions": [],
+  "experiments": [],
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Replaced radial layout with structured grid rows",
+      "status": "chosen",
+      "date": "2026-03-10",
+      "reasoning": "Radial/polar layout scattered cards with no visible hierarchy — users couldn't parse relationships or priority. Structured grid rows using Gestalt proximity principles let whitespace communicate grouping and hierarchy without connection lines. The grid IS the information architecture.",
+      "source": "commit b771140, then refined in 29d3e4e (brick grid sections)"
+    },
+    {
+      "id": "D2",
+      "title": "Pivoted from dump-all-blocks to user-directed progressive disclosure",
+      "status": "chosen",
+      "date": "2026-03-13",
+      "reasoning": "The original model had the AI return 8-15 blocks at once for every query — overwhelming and no user agency. Progressive disclosure lets the user pull threads: type a query → get a seed card + prompt chips → click to explore deeper. The canvas grows as a tree of discoveries. User directs the investigation, not the AI. This also reduces AI response time (smaller focused responses) and makes the exploration path visible.",
+      "source": "commit 153e43d, INTENT.md rejected approaches"
+    }
+  ],
+  "openQuestions": []
+}
