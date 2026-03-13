@@ -31,24 +31,26 @@ The current primitives (person_card, impact_card, cascade_path, relationship_map
   - 2+ brick gap: separate concept groups
 - Canvas still pans/zooms — you're navigating a structured grid, not a scatter plot
 - **No SVG connection lines** — relationships expressed through spatial grouping and containment
-- Dynamic row tracking (`nextRowLeft`/`nextRowRight`) prevents overlap regardless of content size
+- `recalcRows()` reflow system: scans all DOM elements, sorts by position, pushes down overlapping blocks. Called before every placement.
+- **Content-driven sizing**: Grid items declare fixed widths (300px), sections use `width: fit-content` to wrap. No max-width constraints on sections.
 
 ### Block → Placement mapping
-- `person_card` + `metric_row` → left column
-- `impact_card` → "Key Impacts" section, right column
+- `person_card` + `metric_row` → left column (col 0)
+- `impact_card` → "Key Impacts" section, right column (col 7 / RIGHT_COL)
 - `cascade_path` → "How It Connects" section, left column
 - `relationship_map` → "Organizational Footprint" section, right column
 - `chart` / `custom_visual` → placed in whichever column has more room
 - `action_list` → stays in the drawer (not on canvas)
-- `narrative` → first one shows in the persistent insight bar (top of screen); later narratives are ignored
+- `narrative` → first one renders as a canvas block with purple accent border; later narratives ignored
 
 ## What's Done
-1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection(id, col, row, title, opts)`, `addToSection`. Sections support `{ grid: N }` option for multi-column internal grid layout. SVG connections removed.
-2. **app.js** — Section-based placement with dynamic row tracking. `?raw` mode flag. Insight bar (top, persistent) replaces the old auto-fading narrative panel — shows the first narrative as a context summary, stays until dismissed or next query. Impact sections use 2-col grid in both modes. Cascade sections use 2-col grid in raw mode.
-3. **primitives.js** — Chart renderers (bar, donut, timeline) as SVG. Hardcoded card primitives (person, impact, cascade, relationship_map, action_list). Metric chips.
-4. **styles.css** — Brick grid, chart, raw-mode, and card primitive styles.
-5. **server.js** — 8 block types in system prompt. 8 graph tools including `get_org_stats` (aggregate rankings: managers_by_reports, team_sizes, department_sizes, division_sizes, tenure/level/location distributions, skill_coverage). 90s timeout, 6144 token limit.
-6. **`?raw` mode** — Append `?raw` to URL. Now uses the same section-based canvas layout as normal mode (person hero top-left, "Key Impacts" section right, "How It Connects" section left, "Organizational Footprint" section bottom-right) but with clean minimal text renderers instead of styled primitives. Charts still render as real SVG. Metric chips inline into person card. Impact cards show severity tags and affected-people pills. Cascade paths render as flow-node chains. Relationship maps show tagged node lists. Narrative panel and action drawer work identically to normal mode.
+1. **canvas-engine.js** — Brick grid allocator with pan/zoom/camera. API: `addBlock`, `addSection(id, col, row, title, opts)`, `addToSection`. Sections support `{ grid: N, colWidth: px }` for multi-column grid layout with fixed item widths. SVG connections removed.
+2. **app.js** — Section-based placement with reflow-based row tracking (`recalcRows`). `?raw` mode flag. `RIGHT_COL = 7` constant for right column placement. Narrative rendered as canvas block. Impact sections use 2-col grid (300px items) in both modes. Cascade sections use 2-col grid in raw mode.
+3. **primitives.js** — Chart renderers (bar, donut, timeline) as SVG. Hardcoded card primitives (person, impact, cascade, relationship_map, action_list). Metric chips. `avatarHtml()` helper with img/onerror fallback to initials.
+4. **styles.css** — Brick grid, chart, raw-mode, and card primitive styles. WCAG AA contrast: text-secondary #b0b0c8 (~8:1), text-muted #9898b0 (~5:1). Content-driven section sizing (fit-content, no max-width).
+5. **server.js** — 8 block types in system prompt. 8 graph tools including `get_org_stats`. `avatarUrl` included in `nodeSummary()`. 90s timeout, 6144 token limit.
+6. **`?raw` mode** — Append `?raw` to URL. Same section-based canvas layout as normal mode but with clean minimal text renderers. Charts render as real SVG. Metric chips inline into person card. Impact cards show severity tags and affected-people pills. Cascade paths render as flow-node chains. Relationship maps show tagged node lists. Action drawer works identically to normal mode.
+7. **Avatar support** — `avatarUrl` from ee-graph data wired through server → primitives → person cards (both modes). `onerror` fallback to initials.
 
 ## Rejected Approaches
 - **Radial/polar layout**: Scattered cards with no hierarchy. Replaced in previous iteration.
