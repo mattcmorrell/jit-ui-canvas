@@ -212,16 +212,18 @@
   // --- Place block on brick grid ---
   // Layout uses two columns with dynamic row placement to prevent overlap.
   // Col 0 = left column (person, cascades)
-  // Col 5 = right column (impacts, relationship map)
+  // Col 0 = left column (person, cascades)
+  // Col RIGHT_COL = right column (impacts, relationship map)
   // Rows are computed from actual rendered heights so nothing overlaps.
 
   let impactCount = 0;
   let cascadeCount = 0;
   const BRICK = CanvasEngine.BRICK;
+  const RIGHT_COL = 7; // 672px — clears 610px left sections (2×300px grid + gap)
 
   // Track the next available row for each column
   let nextRowLeft = 0;   // column 0
-  let nextRowRight = 0;  // column 5
+  let nextRowRight = 0;  // column RIGHT_COL
 
   // Recalculate rows AND reflow: push down any elements that overlap
   // due to sections growing as children stream in.
@@ -232,7 +234,7 @@
     for (const el of all) {
       const left = parseFloat(el.style.left) || 0;
       const col = Math.round(left / BRICK);
-      if (col < 3) leftEls.push(el);
+      if (col < RIGHT_COL) leftEls.push(el);
       else rightEls.push(el);
     }
     nextRowLeft = reflowColumn(leftEls);
@@ -383,7 +385,7 @@
             recalcRows();
           } else {
             const el = renderRawBlock(block);
-            const col = nextRowLeft <= nextRowRight ? 0 : 5;
+            const col = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
             const row = col === 0 ? nextRowLeft : nextRowRight;
             CanvasEngine.addBlock(id, el, col, row);
             recalcRows();
@@ -393,7 +395,7 @@
 
         case 'impact_card': {
           if (!CanvasEngine.getSection('raw-impacts')) {
-            CanvasEngine.addSection('raw-impacts', 5, nextRowRight, 'Key Impacts', { grid: 2 });
+            CanvasEngine.addSection('raw-impacts', RIGHT_COL, nextRowRight, 'Key Impacts', { grid: 2 });
           }
           const el = renderRawBlock(block);
           CanvasEngine.addToSection('raw-impacts', el);
@@ -417,7 +419,7 @@
 
         case 'relationship_map': {
           if (!CanvasEngine.getSection('raw-map')) {
-            CanvasEngine.addSection('raw-map', 5, nextRowRight, 'Organizational Footprint');
+            CanvasEngine.addSection('raw-map', RIGHT_COL, nextRowRight, 'Organizational Footprint');
           }
           const el = renderRawBlock(block);
           CanvasEngine.addToSection('raw-map', el);
@@ -440,7 +442,7 @@
         case 'custom_visual': {
           const d = block.data || block;
           const vizTitle = d.title || 'Insight';
-          const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
+          const vizCol = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
           const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
           const vizId = `viz-${id}`;
           CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);
@@ -452,7 +454,7 @@
         }
 
         default: {
-          const col = nextRowLeft <= nextRowRight ? 0 : 5;
+          const col = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
           const row = col === 0 ? nextRowLeft : nextRowRight;
           const el = renderRawBlock(block);
           CanvasEngine.addBlock(id, el, col, row);
@@ -497,7 +499,7 @@
 
       case 'impact_card': {
         if (!CanvasEngine.getSection('impacts')) {
-          CanvasEngine.addSection('impacts', 5, nextRowRight, 'Key Impacts', { grid: 2 });
+          CanvasEngine.addSection('impacts', RIGHT_COL, nextRowRight, 'Key Impacts', { grid: 2 });
         }
         const el = Primitives.render(block, handleFollowUp);
         CanvasEngine.addToSection('impacts', el);
@@ -532,7 +534,7 @@
 
       case 'relationship_map': {
         if (!CanvasEngine.getSection('map')) {
-          CanvasEngine.addSection('map', 5, nextRowRight, 'Organizational Footprint');
+          CanvasEngine.addSection('map', RIGHT_COL, nextRowRight, 'Organizational Footprint');
         }
         const el = Primitives.render(block, handleFollowUp);
         CanvasEngine.addToSection('map', el);
@@ -546,7 +548,7 @@
         // Data visualization — place in whichever column has more room
         const d = block.data || block;
         const vizTitle = d.title || 'Insight';
-        const vizCol = nextRowLeft <= nextRowRight ? 0 : 5;
+        const vizCol = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
         const vizRow = vizCol === 0 ? nextRowLeft : nextRowRight;
         const vizId = `viz-${id}`;
         CanvasEngine.addSection(vizId, vizCol, vizRow, vizTitle);

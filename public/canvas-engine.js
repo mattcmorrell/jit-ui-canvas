@@ -131,10 +131,6 @@ const CanvasEngine = (() => {
     el.style.opacity = '0';
     el.style.transform = 'scale(0.97)';
 
-    if (opts && opts.grid) {
-      el.classList.add('canvas-section-wide');
-    }
-
     if (title) {
       const titleEl = document.createElement('div');
       titleEl.className = 'section-title';
@@ -146,7 +142,9 @@ const CanvasEngine = (() => {
     bodyEl.className = 'section-body';
     if (opts && opts.grid) {
       bodyEl.classList.add('section-body-grid');
-      bodyEl.style.gridTemplateColumns = `repeat(${opts.grid}, 1fr)`;
+      // Fixed item widths — items declare size, section wraps around them
+      const colWidth = opts.colWidth || 300;
+      bodyEl.style.gridTemplateColumns = `repeat(${opts.grid}, ${colWidth}px)`;
     }
     el.appendChild(bodyEl);
 
