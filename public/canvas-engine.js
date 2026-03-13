@@ -54,7 +54,7 @@ const CanvasEngine = (() => {
 
   // --- Pan/Zoom ---
   function onPointerDown(e) {
-    if (e.target.closest('.canvas-block, .canvas-section, .narrative-panel, .action-drawer, .input-bar-wrapper, .empty-state, .suggestion-chip, button, a, input')) return;
+    if (e.target.closest('.canvas-block, .canvas-section, .disclosure-node, .narrative-panel, .action-drawer, .decisions-panel, .input-bar-wrapper, .empty-state, .suggestion-chip, button, a, input')) return;
     isPanning = true;
     panStart.x = e.clientX;
     panStart.y = e.clientY;
@@ -278,6 +278,43 @@ const CanvasEngine = (() => {
     animationFrame = requestAnimationFrame(step);
   }
 
+  // --- Move block to pixel coordinates ---
+  function moveBlock(id, x, y, animate) {
+    const entry = blocks.get(id) || sections.get(id);
+    if (!entry) return;
+    if (animate) {
+      entry.el.style.transition = 'left 0.4s cubic-bezier(0.16,1,0.3,1), top 0.4s cubic-bezier(0.16,1,0.3,1)';
+    }
+    entry.el.style.left = `${x}px`;
+    entry.el.style.top = `${y}px`;
+    if (animate) {
+      setTimeout(() => { entry.el.style.transition = ''; }, 450);
+    }
+  }
+
+  // --- Show/hide without removing ---
+  function setBlockVisible(id, visible) {
+    const entry = blocks.get(id) || sections.get(id);
+    if (!entry) return;
+    entry.el.style.opacity = visible ? '1' : '0.25';
+    entry.el.style.pointerEvents = visible ? 'auto' : 'none';
+  }
+
+  // --- Remove block from DOM and map ---
+  function removeBlock(id) {
+    const entry = blocks.get(id);
+    if (entry) {
+      entry.el.remove();
+      blocks.delete(id);
+      return;
+    }
+    const section = sections.get(id);
+    if (section) {
+      section.el.remove();
+      sections.delete(id);
+    }
+  }
+
   // --- Reset ---
   function reset() {
     for (const b of blocks.values()) b.el.remove();
@@ -301,6 +338,9 @@ const CanvasEngine = (() => {
     getBlock,
     getSection,
     getBlockCount,
+    moveBlock,
+    setBlockVisible,
+    removeBlock,
     panTo,
     zoomToFit,
     focusOn,

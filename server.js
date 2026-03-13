@@ -341,6 +341,38 @@ function get_impact_radius(person_id) {
   };
 }
 
+function get_graph_schema() {
+  // Node types: count + property keys from a sample
+  const nodeTypes = {};
+  for (const [type, list] of Object.entries(nodesByType)) {
+    const sample = list[0];
+    const propKeys = sample ? Object.keys(sample.properties) : [];
+    nodeTypes[type] = { count: list.length, properties: propKeys };
+  }
+
+  // Edge types: count + sample metadata keys
+  const edgeTypeCounts = {};
+  const edgeTypeMeta = {};
+  for (const e of edges) {
+    edgeTypeCounts[e.type] = (edgeTypeCounts[e.type] || 0) + 1;
+    if (!edgeTypeMeta[e.type] && e.metadata) {
+      edgeTypeMeta[e.type] = Object.keys(e.metadata);
+    }
+  }
+  const edgeTypes = {};
+  for (const [type, count] of Object.entries(edgeTypeCounts)) {
+    edgeTypes[type] = { count, metadataKeys: edgeTypeMeta[type] || [] };
+  }
+
+  return {
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    nodeTypes,
+    edgeTypes,
+    hint: 'Use this schema to understand what data exists before querying. If a concept (e.g. promotions, compensation) has no corresponding node or edge type, tell the user that data is not in the graph.'
+  };
+}
+
 function get_org_stats(stat_type) {
   const people = nodesByType['person'] || [];
 
@@ -441,6 +473,14 @@ function get_org_stats(stat_type) {
 
 // --- Tool definitions for OpenAI ---
 const toolDefs = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_graph_schema',
+      description: 'Returns the schema of the employee graph: all node types (with property keys and counts), all edge types (with metadata keys and counts). Call this FIRST when you are unsure whether the graph contains the data needed to answer a question. If the data does not exist, tell the user honestly rather than searching blindly.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
   {
     type: 'function',
     function: {
@@ -557,6 +597,7 @@ const toolDefs = [
 
 // Tool dispatch
 const toolFns = {
+  get_graph_schema: () => get_graph_schema(),
   search_people: (args) => search_people(args.query),
   get_person_full: (args) => get_person_full(args.person_id),
   get_team_full: (args) => get_team_full(args.team_id),
@@ -585,8 +626,9 @@ Projects and technical work are relevant context but **secondary**. Don't lead w
 
 ## Your Tools
 
-You have 8 graph query tools. ALWAYS query the graph before answering. Never fabricate data.
+You have 9 graph query tools. ALWAYS query the graph before answering. Never fabricate data.
 
+- **get_graph_schema** — Returns all node types, edge types, their properties, and counts. **Call this first when you're unsure whether the graph has the data to answer a question.** If the data doesn't exist, tell the user what's missing rather than searching blindly.
 - **search_people** — Find people by name/role/email
 - **get_person_full** — Full profile + all connections grouped by relationship type
 - **get_team_full** — Team details with members, manager, and work assignments
@@ -750,7 +792,7 @@ When someone departs, surface impacts in this order (HR admin priorities):
 
 ## What NOT to do
 
-- Don't fabricate graph data. If you can't find it, say so.
+- Don't fabricate graph data. If you can't find it, say so. If you're unsure whether the graph has certain data, call get_graph_schema first.
 - Don't return a wall of narrative text. Mix block types for visual richness.
 - Don't show more than 3 cascade_paths — pick the most impactful discoveries.
 - Don't include more than 15 nodes in a relationship_map.
@@ -848,6 +890,7 @@ app.get('/api/chat/stream', async (req, res) => {
 
           // Status update
           const statusMessages = {
+            get_graph_schema: 'Checking what data is available in the graph...',
             search_people: `Searching for "${args.query}"...`,
             get_person_full: `Loading full profile for ${args.person_id}...`,
             get_team_full: `Loading team ${args.team_id}...`,
@@ -919,6 +962,261 @@ app.get('/api/chat/stream', async (req, res) => {
     sendSSE('done', { conversation_id: convId });
   } catch (err) {
     console.error('Chat error:', err);
+    sendSSE('error', { message: err.message || 'An error occurred' });
+  } finally {
+    res.end();
+  }
+});
+
+// --- Explore System Prompt (Progressive Disclosure) ---
+function getExploreSystemPrompt() {
+  return `You are an HR intelligence analyst for Acme Co, a 148-employee tech company headquartered in Austin, TX. Today's date is 2026-03-12.
+
+You have access to an Employee Graph with ${nodes.length} nodes and ${edges.length} edges. ALWAYS query the graph before answering. Never fabricate data.
+
+## Mode: PROGRESSIVE DISCLOSURE
+
+You work in progressive disclosure mode. Each response is SMALL and FOCUSED. The user explores by clicking follow-up prompts on an interactive canvas. Do NOT dump everything at once.
+
+## Your Tools
+
+You have 9 graph query tools. Use them — especially get_impact_radius for departure scenarios and get_org_stats for aggregate questions.
+
+## Response Format
+
+You MUST respond with valid JSON in this exact structure:
+{
+  "blocks": [ /* 1-3 content blocks */ ],
+  "prompts": [ /* 2-6 follow-up prompts */ ],
+  "options": null
+}
+
+### Response Types
+
+**SEED response** (first message about a person/event):
+- blocks: person_card for the subject + metric_row with 3-4 key metrics
+- prompts: 4-6 follow-up prompts
+- options: null
+
+**EXPLORE response** (follow-up prompt clicked):
+- blocks: 1-3 focused content blocks answering the specific question
+- prompts: 2-4 follow-up prompts for deeper exploration
+- options: null (or an options object if there's a choice to make)
+
+**SCENARIO response** (user selected an option):
+- blocks: 1-2 fyi/impact blocks showing consequences
+- prompts: 1-3 follow-up prompts
+- options: null
+
+### Block Types
+
+1. **person_card** — Profile card for a person
+\`{ "type": "person_card", "data": { "id": "person-008", "name": "Raj Patel", "role": "Engineering Lead", "level": "M-1", "status": "active", "startDate": "2022-11-07", "location": "Austin, TX", "teamName": "Platform", "managerName": "Lisa Huang", "directReportCount": 12, "projectCount": 4, "avatarUrl": "data/avatars/person-008.jpg" } }\`
+
+2. **metric_row** — 3-4 metric chips
+\`{ "type": "metric_row", "data": { "metrics": [{ "value": "12", "label": "Direct Reports", "context": "Largest in Engineering" }] } }\`
+
+3. **person_grid** — Compact grid of people
+\`{ "type": "person_grid", "data": { "title": "Direct Reports", "people": [{ "id": "person-009", "name": "Derek Lin", "role": "Senior Engineer", "avatarUrl": "data/avatars/person-009.jpg" }] } }\`
+
+4. **narrative** — Short markdown text (1-3 sentences max)
+\`{ "type": "narrative", "content": "Raj manages the **largest team** in Engineering..." }\`
+
+5. **impact_card** — Severity-tagged impact finding
+\`{ "type": "impact_card", "data": { "severity": "critical", "title": "12 Reports Need a New Manager", "description": "Brief description", "affectedPeople": [{ "id": "person-009", "name": "Derek Lin" }], "category": "org_structure" } }\`
+
+6. **cascade_path** — Relationship chain visualization
+\`{ "type": "cascade_path", "data": { "title": "Mentorship gap", "steps": [{ "id": "person-008", "label": "Raj", "type": "person", "detail": "Departing" }, { "edge": "mentors", "label": "only mentor" }, { "id": "person-009", "label": "Derek", "type": "person", "detail": "1yr tenure" }] } }\`
+
+7. **info_list** — Key-value information list
+\`{ "type": "info_list", "data": { "title": "Offboarding Checklist", "items": [{ "label": "COBRA Notice", "value": "Due within 14 days" }, { "label": "Equipment Return", "value": "Laptop, badge, parking pass" }] } }\`
+
+8. **fyi** — Informational or warning block
+\`{ "type": "fyi", "data": { "severity": "warning", "title": "Derek Has No Backup Mentor", "content": "Derek Lin is relatively junior (1yr tenure) and Raj is his only mentor." } }\`
+Severity: "info" (blue), "warning" (orange), "critical" (red)
+
+9. **action_list** — Recommended actions (goes to decisions panel)
+\`{ "type": "action_list", "data": { "title": "Recommended Actions", "actions": [{ "priority": "critical", "action": "Identify interim manager", "owner": "Lisa Huang", "reason": "12 reports need a manager" }] } }\`
+
+10. **chart** — Data visualization
+\`{ "type": "chart", "data": { "chartType": "bar", "title": "Title", "items": [...], "valueLabel": "label" } }\`
+
+### Prompt Format
+
+Each prompt object:
+\`{ "text": "What's the effect on the team?", "category": "consequence" }\`
+
+Categories:
+- **consequence**: exploring impacts, understanding what happened (shown below content in main flow)
+- **action**: things to do about it, next steps (shown to the right)
+
+Write prompts as natural questions a curious HR leader would ask. Be specific — "Who's most at risk of leaving?" not "Learn more."
+
+### Options Format (when presenting choices)
+
+\`{ "question": "Who should be interim manager?", "items": [{ "id": "person-009", "name": "Derek Lin", "role": "Senior Engineer", "avatarUrl": "data/avatars/person-009.jpg", "reason": "Most senior on the team" }] }\`
+
+## Rules
+
+- Keep responses SMALL. 1-3 blocks max per response. The canvas grows organically.
+- ALWAYS include 2-6 follow-up prompts. The user explores by clicking.
+- Use person_grid for groups of people (direct reports, team members).
+- Use cascade_path ONLY for multi-hop relationship discoveries.
+- Use fyi for important warnings or context the user should know.
+- action_list items go to the user's decisions panel — use for concrete next steps.
+- Use real names and plain language. Write like you're briefing a colleague.
+- NEVER fabricate data. If the graph doesn't have it, say so.
+- Prompts should be specific and actionable — "Who's most at risk?" not "Tell me more."`;
+}
+
+function sendExploreResponse(content, sendSSE) {
+  let text = content.trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.error('Explore JSON parse error:', e.message);
+    parsed = {
+      blocks: [{ type: 'narrative', content }],
+      prompts: [{ text: 'Tell me more', category: 'consequence' }],
+      options: null
+    };
+  }
+
+  if (!parsed.blocks) parsed.blocks = [];
+  if (!parsed.prompts) parsed.prompts = [];
+
+  sendSSE('response', {
+    blocks: parsed.blocks,
+    prompts: parsed.prompts,
+    options: parsed.options || null
+  });
+}
+
+// --- SSE Explore Endpoint (Progressive Disclosure) ---
+app.get('/api/explore', async (req, res) => {
+  const { conversation_id, message } = req.query;
+
+  if (!message) {
+    res.status(400).json({ error: 'message parameter required' });
+    return;
+  }
+
+  const convId = conversation_id || crypto.randomUUID();
+
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Conversation-Id', convId);
+  res.flushHeaders();
+
+  function sendSSE(type, data) {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+  }
+
+  console.log('--- Explore request:', message.substring(0, 80));
+
+  try {
+    let conv = conversations.get(convId);
+    if (!conv) {
+      conv = { messages: [{ role: 'system', content: getExploreSystemPrompt() }], lastAccess: Date.now() };
+      conversations.set(convId, conv);
+    }
+    conv.lastAccess = Date.now();
+
+    conv.messages.push({ role: 'user', content: message });
+
+    sendSSE('status', { message: 'Thinking...' });
+
+    // Tool loop (max 5 tool calls for explore)
+    let toolCalls = 0;
+    const MAX_TOOL_CALLS = 5;
+    let gotFinalResponse = false;
+
+    while (toolCalls < MAX_TOOL_CALLS) {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-5.4',
+        messages: conv.messages,
+        tools: toolDefs,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_completion_tokens: 4096
+      }, { timeout: 90000 });
+
+      const choice = completion.choices[0];
+      const assistantMsg = choice.message;
+      console.log(`Explore API call #${toolCalls} done. finish_reason=${choice.finish_reason}, tools=${!!(assistantMsg.tool_calls && assistantMsg.tool_calls.length)}`);
+      conv.messages.push(assistantMsg);
+
+      if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
+        for (const tc of assistantMsg.tool_calls) {
+          const fnName = tc.function.name;
+          let args;
+          try { args = JSON.parse(tc.function.arguments); } catch (e) { args = {}; }
+
+          const statusMessages = {
+            get_graph_schema: 'Checking graph schema...',
+            search_people: `Searching for "${args.query}"...`,
+            get_person_full: `Loading profile...`,
+            get_team_full: `Loading team...`,
+            get_direct_reports: `Tracing reporting tree...`,
+            traverse: `Walking graph...`,
+            search_nodes: `Searching nodes...`,
+            get_impact_radius: `Analyzing impact radius...`,
+            get_org_stats: `Computing org statistics...`
+          };
+          sendSSE('status', { message: statusMessages[fnName] || `Querying ${fnName}...` });
+
+          const fn = toolFns[fnName];
+          const result = fn ? fn(args) : { error: `Unknown tool: ${fnName}` };
+
+          conv.messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify(result)
+          });
+
+          toolCalls++;
+        }
+        continue;
+      }
+
+      // Final response — parse and send
+      if (assistantMsg.content) {
+        sendExploreResponse(assistantMsg.content, sendSSE);
+        gotFinalResponse = true;
+      }
+
+      break;
+    }
+
+    // If we ran out of tool calls, force a final response
+    if (!gotFinalResponse) {
+      sendSSE('status', { message: 'Composing response...' });
+      const finalCompletion = await openai.chat.completions.create({
+        model: 'gpt-5.4',
+        messages: conv.messages,
+        tools: toolDefs,
+        tool_choice: 'none',
+        temperature: 0.7,
+        max_completion_tokens: 4096
+      }, { timeout: 90000 });
+
+      const finalMsg = finalCompletion.choices[0].message;
+      conv.messages.push(finalMsg);
+      if (finalMsg.content) {
+        sendExploreResponse(finalMsg.content, sendSSE);
+      }
+    }
+
+    sendSSE('done', { conversation_id: convId });
+  } catch (err) {
+    console.error('Explore error:', err);
     sendSSE('error', { message: err.message || 'An error occurred' });
   } finally {
     res.end();

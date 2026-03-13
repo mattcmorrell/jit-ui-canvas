@@ -30,33 +30,31 @@
 
 <!-- Spatial viewport -->
 <div id="viewport">
-  <div id="world">
-    <svg id="svg-connections"></svg>
-    <!-- Center placeholder for person card -->
-    <div id="center-placeholder" class="center-placeholder" style="display:none;">
-      <div class="center-placeholder-avatar"></div>
-      <div class="center-placeholder-name"></div>
-    </div>
-  </div>
+  <div id="world"></div>
 
   <!-- Empty state (centered in viewport) -->
   <div class="empty-state" id="empty-state">
     <h1>What would you like to know?</h1>
     <p>Ask about your organization and watch the AI walk your employee graph to discover insights.</p>
     <div class="suggestion-chips" id="suggestion-chips">
-      <button class="suggestion-chip" data-query="Raj Patel just resigned. What should I know?">Raj Patel just resigned. What should I know?</button>
-      <button class="suggestion-chip" data-query="Why is Sarah Chen so effective? How do we develop more people like her?">Why is Sarah Chen so effective?</button>
+      <button class="suggestion-chip" data-query="Raj Patel just resigned">Raj Patel just resigned</button>
+      <button class="suggestion-chip" data-query="Sarah Chen is being considered for promotion">Sarah Chen — promotion review</button>
+      <button class="suggestion-chip" data-query="Show me the Engineering org structure">Engineering org overview</button>
     </div>
   </div>
 </div>
 
-<!-- Action drawer (right edge, slides in) -->
-<div id="action-drawer" class="action-drawer">
-  <div class="action-drawer-tab" id="action-drawer-tab">
+<!-- Decisions panel (right edge) -->
+<div id="decisions-panel" class="decisions-panel">
+  <div class="decisions-toggle" id="decisions-toggle">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-    Actions
+    <span>Decisions</span>
+    <span class="decisions-badge" id="decisions-count">0</span>
   </div>
-  <div class="action-drawer-body" id="action-drawer-body"></div>
+  <div class="decisions-body">
+    <div class="decisions-header">Your Decisions</div>
+    <div class="decisions-list" id="decisions-list"></div>
+  </div>
 </div>
 
 <!-- Status indicator (floating, bottom-center above input) -->
@@ -77,6 +75,5 @@
 <script src="primitives.js"></script>
 <script src="canvas-engine.js"></script>
 <script src="app.js"></script>
-<script src="/feedback-panel.js"></script>
 </body>
 </html>
