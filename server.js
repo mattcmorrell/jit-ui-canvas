@@ -416,8 +416,26 @@ function get_org_stats(stat_type) {
       return { stat: 'skill_coverage', skills: result.slice(0, 20), rareSkills: result.filter(s => s.holderCount <= 2), totalSkills: result.length };
     }
 
+    case 'department_sizes': {
+      const depts = nodesByType['department'] || [];
+      const result = depts.map(d => {
+        const memberEdges = (edgesByTarget[d.id] || []).filter(e => e.type === 'in_department');
+        return { ...nodeSummary(d), headcount: memberEdges.length };
+      }).sort((a, b) => b.headcount - a.headcount);
+      return { stat: 'department_sizes', departments: result, totalDepartments: result.length };
+    }
+
+    case 'division_sizes': {
+      const divs = nodesByType['division'] || [];
+      const result = divs.map(d => {
+        const memberEdges = (edgesByTarget[d.id] || []).filter(e => e.type === 'in_division');
+        return { ...nodeSummary(d), headcount: memberEdges.length };
+      }).sort((a, b) => b.headcount - a.headcount);
+      return { stat: 'division_sizes', divisions: result, totalDivisions: result.length };
+    }
+
     default:
-      return { error: `Unknown stat_type: ${stat_type}. Available: managers_by_reports, team_sizes, tenure_distribution, level_distribution, location_distribution, skill_coverage` };
+      return { error: `Unknown stat_type: ${stat_type}. Available: managers_by_reports, team_sizes, department_sizes, division_sizes, tenure_distribution, level_distribution, location_distribution, skill_coverage` };
   }
 }
 
@@ -527,8 +545,8 @@ const toolDefs = [
         properties: {
           stat_type: {
             type: 'string',
-            enum: ['managers_by_reports', 'team_sizes', 'tenure_distribution', 'level_distribution', 'location_distribution', 'skill_coverage'],
-            description: 'Type of stat: managers_by_reports (ranked list of managers by direct report count), team_sizes (teams by member count), tenure_distribution (employee tenure buckets), level_distribution (headcount by level), location_distribution (headcount by location), skill_coverage (skills ranked by how many people have them, rare skills highlighted)'
+            enum: ['managers_by_reports', 'team_sizes', 'department_sizes', 'division_sizes', 'tenure_distribution', 'level_distribution', 'location_distribution', 'skill_coverage'],
+            description: 'Type of stat: managers_by_reports (ranked list of managers by direct report count), team_sizes (teams by member count), department_sizes (departments by headcount — Engineering, Sales, etc.), division_sizes (divisions by headcount — Product & Technology, Revenue, G&A), tenure_distribution (employee tenure buckets), level_distribution (headcount by level), location_distribution (headcount by location), skill_coverage (skills ranked by how many people have them, rare skills highlighted)'
           }
         },
         required: ['stat_type']
