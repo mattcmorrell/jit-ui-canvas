@@ -12,9 +12,6 @@
   const sendBtn = document.getElementById('send-btn');
   const suggestionChips = document.getElementById('suggestion-chips');
   const centerPlaceholder = document.getElementById('center-placeholder');
-  const insightBar = document.getElementById('insight-bar');
-  const insightBarBody = document.getElementById('insight-bar-body');
-  const insightBarClose = document.getElementById('insight-bar-close');
   const actionDrawer = document.getElementById('action-drawer');
   const actionDrawerBody = document.getElementById('action-drawer-body');
   const actionDrawerTab = document.getElementById('action-drawer-tab');
@@ -61,34 +58,8 @@
     centerPlaceholder.classList.remove('pulsing');
   }
 
-  // --- Insight bar (top, persistent) ---
-  let hasInsight = false;
-
-  function showInsight(block) {
-    const content = typeof block.data === 'string' ? block.data : (block.data?.content || block.content || '');
-    if (!content) return;
-
-    // Keep the first narrative — it's the primary analysis.
-    // Later narratives are typically follow-up offers.
-    if (hasInsight) return;
-    hasInsight = true;
-
-    insightBarBody.innerHTML = Primitives.renderNarrativeContent(content);
-    insightBar.style.display = 'block';
-    adjustViewportForInsight();
-  }
-
-  function adjustViewportForInsight() {
-    requestAnimationFrame(() => {
-      const barH = insightBar.offsetHeight || 0;
-      viewport.style.top = (52 + barH) + 'px';
-    });
-  }
-
-  insightBarClose.addEventListener('click', () => {
-    insightBar.style.display = 'none';
-    viewport.style.top = '52px';
-  });
+  // --- Narrative count (only show first on canvas) ---
+  let narrativeCount = 0;
 
   // --- Action drawer ---
   function showActionDrawer(block) {
@@ -148,9 +119,7 @@
     cascadeCount = 0;
     nextRowLeft = 0;
     nextRowRight = 0;
-    insightBar.style.display = 'none';
-    viewport.style.top = '52px';
-    hasInsight = false;
+    narrativeCount = 0;
     actionDrawer.classList.remove('open');
     actionDrawerOpen = false;
     actionDrawerBody.innerHTML = '';
@@ -429,7 +398,18 @@
         }
 
         case 'narrative': {
-          showInsight(block);
+          // Only show the first narrative on canvas (primary analysis)
+          if (narrativeCount > 0) break;
+          narrativeCount++;
+          const content = typeof block.data === 'string' ? block.data : (block.data?.content || block.content || '');
+          if (!content) break;
+          const el = document.createElement('div');
+          el.className = 'narrative-card';
+          el.innerHTML = Primitives.renderNarrativeContent(content);
+          const narCol = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
+          const narRow = narCol === 0 ? nextRowLeft : nextRowRight;
+          CanvasEngine.addBlock(id, el, narCol, narRow);
+          recalcRows();
           break;
         }
 
@@ -523,7 +503,17 @@
       }
 
       case 'narrative': {
-        showInsight(block);
+        if (narrativeCount > 0) break;
+        narrativeCount++;
+        const narContent = typeof block.data === 'string' ? block.data : (block.data?.content || block.content || '');
+        if (!narContent) break;
+        const narEl = document.createElement('div');
+        narEl.className = 'narrative-card';
+        narEl.innerHTML = Primitives.renderNarrativeContent(narContent);
+        const narCol = nextRowLeft <= nextRowRight ? 0 : RIGHT_COL;
+        const narRow = narCol === 0 ? nextRowLeft : nextRowRight;
+        CanvasEngine.addBlock(id, narEl, narCol, narRow);
+        recalcRows();
         break;
       }
 
