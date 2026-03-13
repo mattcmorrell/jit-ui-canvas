@@ -223,34 +223,37 @@
   let nextRowLeft = 0;   // column 0
   let nextRowRight = 0;  // column 5
 
-  function bricksForPx(px) {
-    return Math.ceil(px / BRICK) + 1; // +1 brick gap between sections
+  // Recalculate rows AND reflow: push down any elements that overlap
+  // due to sections growing as children stream in.
+  function recalcRows() {
+    const leftEls = [];
+    const rightEls = [];
+    const all = world.querySelectorAll(':scope > .canvas-block, :scope > .canvas-section');
+    for (const el of all) {
+      const left = parseFloat(el.style.left) || 0;
+      const col = Math.round(left / BRICK);
+      if (col < 3) leftEls.push(el);
+      else rightEls.push(el);
+    }
+    nextRowLeft = reflowColumn(leftEls);
+    nextRowRight = reflowColumn(rightEls);
   }
 
-  // Measure element height and advance the row tracker for a column.
-  // Uses setTimeout(0) to let the DOM settle, but also does a sync
-  // fallback estimate so the next block placement is safe.
-  function advanceRow(column, el) {
-    const top = parseFloat(el.style.top) || 0;
-    // Sync estimate: use scrollHeight or fallback
-    const h = el.scrollHeight || el.offsetHeight || 300;
-    const rows = bricksForPx(h);
-    const startRow = Math.ceil(top / BRICK);
-    if (column === 0) {
-      nextRowLeft = Math.max(nextRowLeft, startRow + rows);
-    } else {
-      nextRowRight = Math.max(nextRowRight, startRow + rows);
-    }
-    // Also re-measure after paint in case content expanded
-    setTimeout(() => {
-      const h2 = el.scrollHeight || el.offsetHeight || 300;
-      const rows2 = bricksForPx(h2);
-      if (column === 0) {
-        nextRowLeft = Math.max(nextRowLeft, startRow + rows2);
-      } else {
-        nextRowRight = Math.max(nextRowRight, startRow + rows2);
+  // Sort elements top-to-bottom, push any overlapping ones down, return next available row.
+  function reflowColumn(elements) {
+    if (elements.length === 0) return 0;
+    elements.sort((a, b) => (parseFloat(a.style.top) || 0) - (parseFloat(b.style.top) || 0));
+    let nextTop = 0;
+    for (const el of elements) {
+      const currentTop = parseFloat(el.style.top) || 0;
+      if (currentTop < nextTop) {
+        el.style.top = `${nextTop}px`;
       }
-    }, 50);
+      const top = parseFloat(el.style.top) || 0;
+      const h = el.scrollHeight || el.offsetHeight || 300;
+      nextTop = top + h + BRICK; // 1 brick gap between elements
+    }
+    return Math.ceil(nextTop / BRICK);
   }
 
   // --- Raw block renderer (for ?raw mode) ---
@@ -347,6 +350,9 @@
     const type = block.type;
     const id = `block-${blockCounter++}`;
 
+    // Re-scan DOM for actual heights before placing anything new
+    recalcRows();
+
     // --- RAW MODE: minimal text + real charts, section-based layout ---
     if (RAW_MODE) {
       hideCenterPlaceholder();
@@ -358,7 +364,7 @@
           el.classList.add('raw-hero');
           personCardId = id;
           CanvasEngine.addBlock(id, el, 0, nextRowLeft);
-          advanceRow(0, el);
+          recalcRows();
           if (blockCounter === 1) CanvasEngine.focusOn(id, 1);
           break;
         }
@@ -374,13 +380,13 @@
             metricEl.classList.add('raw-metrics-inline');
             personEntry.el.appendChild(metricEl);
             personEntry._hasMetrics = true;
-            advanceRow(0, personEntry.el);
+            recalcRows();
           } else {
             const el = renderRawBlock(block);
             const col = nextRowLeft <= nextRowRight ? 0 : 5;
             const row = col === 0 ? nextRowLeft : nextRowRight;
             CanvasEngine.addBlock(id, el, col, row);
-            advanceRow(col, el);
+            recalcRows();
           }
           break;
         }
@@ -393,7 +399,7 @@
           CanvasEngine.addToSection('raw-impacts', el);
           impactCount++;
           const sec = CanvasEngine.getSection('raw-impacts');
-          if (sec) advanceRow(5, sec.el);
+          if (sec) recalcRows();
           break;
         }
 
@@ -405,7 +411,7 @@
           CanvasEngine.addToSection('raw-cascades', el);
           cascadeCount++;
           const sec = CanvasEngine.getSection('raw-cascades');
-          if (sec) advanceRow(0, sec.el);
+          if (sec) recalcRows();
           break;
         }
 
@@ -416,7 +422,7 @@
           const el = renderRawBlock(block);
           CanvasEngine.addToSection('raw-map', el);
           const sec = CanvasEngine.getSection('raw-map');
-          if (sec) advanceRow(5, sec.el);
+          if (sec) recalcRows();
           break;
         }
 
@@ -441,7 +447,7 @@
           const el = Primitives.renderChart(block);
           CanvasEngine.addToSection(vizId, el);
           const vizSec = CanvasEngine.getSection(vizId);
-          if (vizSec) advanceRow(vizCol, vizSec.el);
+          if (vizSec) recalcRows();
           break;
         }
 
@@ -450,7 +456,7 @@
           const row = col === 0 ? nextRowLeft : nextRowRight;
           const el = renderRawBlock(block);
           CanvasEngine.addBlock(id, el, col, row);
-          advanceRow(col, el);
+          recalcRows();
           break;
         }
       }
@@ -465,7 +471,7 @@
         const el = Primitives.renderPersonCardHero(block, handleFollowUp);
         personCardId = id;
         CanvasEngine.addBlock(id, el, 0, nextRowLeft);
-        advanceRow(0, el);
+        recalcRows();
         CanvasEngine.focusOn(id, 1);
         break;
       }
@@ -482,7 +488,7 @@
             if (personCard) {
               personCard.appendChild(chips);
               // Re-measure person card since it grew
-              advanceRow(0, personEntry.el);
+              recalcRows();
             }
           }
         }
@@ -498,7 +504,7 @@
         impactCount++;
         // Re-measure section after each card added
         const sec = CanvasEngine.getSection('impacts');
-        if (sec) advanceRow(5, sec.el);
+        if (sec) recalcRows();
         break;
       }
 
@@ -510,7 +516,7 @@
         CanvasEngine.addToSection('cascades', el);
         cascadeCount++;
         const sec = CanvasEngine.getSection('cascades');
-        if (sec) advanceRow(0, sec.el);
+        if (sec) recalcRows();
         break;
       }
 
@@ -531,7 +537,7 @@
         const el = Primitives.render(block, handleFollowUp);
         CanvasEngine.addToSection('map', el);
         const sec = CanvasEngine.getSection('map');
-        if (sec) advanceRow(5, sec.el);
+        if (sec) recalcRows();
         break;
       }
 
@@ -547,7 +553,7 @@
         const el = Primitives.render(block, handleFollowUp);
         CanvasEngine.addToSection(vizId, el);
         const vizSec = CanvasEngine.getSection(vizId);
-        if (vizSec) advanceRow(vizCol, vizSec.el);
+        if (vizSec) recalcRows();
         break;
       }
 
