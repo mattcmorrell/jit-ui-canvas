@@ -115,6 +115,7 @@
         y = getBottom(0);
       } else if (node.direction === 'right') {
         col = (parent._layoutCol || 0) + 1;
+        // Top-align with parent
         y = Math.max(parent._layoutY || 0, getBottom(col));
       } else {
         col = parent._layoutCol || 0;
@@ -127,10 +128,27 @@
       const x = col * (COL_WIDTH + COL_GAP);
       CanvasEngine.moveBlock(id, x, y, true);
 
+      // Size prompt chips and right-column responses
+      if (parent && (node.type === 'prompts' || node.type === 'action-prompts')) {
+        if (node.direction === 'right') {
+          node.el.style.width = '240px';
+          node.el.style.flexDirection = 'column';
+        } else {
+          const parentWidth = parent.el.offsetWidth;
+          if (parentWidth > 0) {
+            node.el.style.width = parentWidth + 'px';
+          }
+        }
+      }
+      if (node.type === 'response' && node.direction === 'right') {
+        node.el.style.maxWidth = COL_WIDTH + 'px';
+      }
+
       const h = node.el.offsetHeight || 60;
       setBottom(col, y + h + ROW_GAP);
 
-      // Layout children: below first, then right
+      // Layout children: right first, then below
+      // Right children go first so we know the full height of the right branch
       const belowChildren = node.children.filter(cid => {
         const c = canvasNodes.get(cid);
         return c && c.direction !== 'right';
@@ -140,8 +158,26 @@
         return c && c.direction === 'right';
       });
 
-      for (const childId of belowChildren) layoutNode(childId);
+      // Layout right children first
       for (const childId of rightChildren) layoutNode(childId);
+
+      // After right branch is laid out, push this column's bottom past all right-branch content
+      // so below-children start cleanly underneath everything
+      if (rightChildren.length > 0) {
+        let maxRightBottom = 0;
+        function collectRightBottoms(cid) {
+          const c = canvasNodes.get(cid);
+          if (!c) return;
+          const cBottom = (c._layoutY || 0) + (c.el.offsetHeight || 60) + ROW_GAP;
+          maxRightBottom = Math.max(maxRightBottom, cBottom);
+          for (const grandchild of c.children) collectRightBottoms(grandchild);
+        }
+        for (const childId of rightChildren) collectRightBottoms(childId);
+        setBottom(col, maxRightBottom);
+      }
+
+      // Now layout below children — they start after the right branch
+      for (const childId of belowChildren) layoutNode(childId);
     }
 
     for (const root of roots) {
@@ -432,6 +468,16 @@
     }
   }
 
+  // --- Helpers: determine if a node is in the right-branch flow ---
+  function isRightBranch(nodeId) {
+    let current = canvasNodes.get(nodeId);
+    while (current) {
+      if (current.direction === 'right') return true;
+      current = current.parentId ? canvasNodes.get(current.parentId) : null;
+    }
+    return false;
+  }
+
   // --- Core interaction ---
 
   function startExploration(message) {
@@ -530,9 +576,14 @@
       }
     });
 
-    // Loading below the prompt group
+    // Determine flow direction: right-branch explorations continue right
+    const inRightBranch = isRightBranch(promptNodeId);
+    const flowDir = inRightBranch ? 'right' : 'below';
+
+    // Loading — parent to the prompt's parent so it appears next to the card
+    const loadingParent = promptNode.parentId || promptNodeId;
     const loadingEl = renderLoading(prompt.text);
-    const loadingId = addCanvasNode('loading', promptNodeId, 'below', {}, loadingEl);
+    const loadingId = addCanvasNode('loading', loadingParent, flowDir, {}, loadingEl);
 
     requestAnimationFrame(() => {
       layoutAll();
@@ -545,9 +596,17 @@
     callExploreAPI(prompt.text, conversationId, (response) => {
       removeCanvasNode(loadingId);
 
-      // Render response
+      // Add headline from the prompt question
       const responseEl = renderResponseContent(response.blocks);
-      const responseId = addCanvasNode('response', promptNodeId, 'below', response, responseEl);
+      const headline = document.createElement('div');
+      headline.className = 'response-headline';
+      headline.textContent = response.title || prompt.text;
+      responseEl.prepend(headline);
+
+      // Remove prompt chips and re-parent response directly next to the parent card
+      const parentOfPrompts = promptNode.parentId;
+      removeCanvasNode(promptNodeId);
+      const responseId = addCanvasNode('response', parentOfPrompts, flowDir, response, responseEl);
 
       // Click to refocus
       responseEl.style.cursor = 'pointer';
@@ -557,18 +616,24 @@
         }
       });
 
-      // New prompts
+      // New prompts — in right branch, all prompts continue right; in main column, consequence=below, action=right
       const consequencePrompts = (response.prompts || []).filter(p => p.category !== 'action');
       const actionPrompts = (response.prompts || []).filter(p => p.category === 'action');
+      const allPrompts = inRightBranch ? [...consequencePrompts, ...actionPrompts] : null;
 
-      if (consequencePrompts.length > 0) {
-        const el = renderPromptChips(consequencePrompts);
-        addCanvasNode('prompts', responseId, 'below', { prompts: consequencePrompts }, el);
-      }
-
-      if (actionPrompts.length > 0) {
-        const el = renderPromptChips(actionPrompts);
-        addCanvasNode('action-prompts', responseId, 'right', { prompts: actionPrompts }, el);
+      if (inRightBranch && allPrompts.length > 0) {
+        // In right branch: all prompts go right as one group
+        const el = renderPromptChips(allPrompts);
+        addCanvasNode('prompts', responseId, 'right', { prompts: allPrompts }, el);
+      } else {
+        if (consequencePrompts.length > 0) {
+          const el = renderPromptChips(consequencePrompts);
+          addCanvasNode('prompts', responseId, 'below', { prompts: consequencePrompts }, el);
+        }
+        if (actionPrompts.length > 0) {
+          const el = renderPromptChips(actionPrompts);
+          addCanvasNode('action-prompts', responseId, 'right', { prompts: actionPrompts }, el);
+        }
       }
 
       if (response.options) {

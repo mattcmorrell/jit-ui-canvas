@@ -1,7 +1,7 @@
 {
   "title": "Product Decision Journal",
   "project": "jit-ui-canvas",
-  "lastUpdated": "2026-03-13",
+  "lastUpdated": "2026-03-16",
   "outcomes": [],
   "opportunities": [],
   "solutions": [],
@@ -24,5 +24,12 @@
       "source": "commit 153e43d, INTENT.md rejected approaches"
     }
   ],
-  "openQuestions": []
+  "openQuestions": [
+    {
+      "id": "Q1",
+      "question": "What's the right mix of primitives vs. AI-generated visuals?",
+      "context": "Three experiments running in parallel to answer this: progressive disclosure (interaction model), primitive composition (Tier 1+2), generative visuals (Tier 3). See ../KNOWLEDGE.md for the full framework.",
+      "date": "2026-03-16"
+    }
+  ]
 }

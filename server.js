@@ -986,6 +986,7 @@ You have 9 graph query tools. Use them — especially get_impact_radius for depa
 
 You MUST respond with valid JSON in this exact structure:
 {
+  "title": "Short headline summarizing your answer (2-5 words, noun phrase, not a question)",
   "blocks": [ /* 1-3 content blocks */ ],
   "prompts": [ /* 2-6 follow-up prompts */ ],
   "options": null
