@@ -567,8 +567,8 @@
     const promptNode = canvasNodes.get(promptNodeId);
     if (!promptNode) return;
 
-    // Highlight clicked chip, dim others
-    chipEl.classList.add('prompt-chip-active');
+    // Show loading state on the clicked chip, dim others
+    chipEl.classList.add('prompt-chip-loading');
     promptNode.el.querySelectorAll('.prompt-chip').forEach(chip => {
       if (chip !== chipEl) {
         chip.classList.add('prompt-chip-dimmed');
@@ -580,21 +580,7 @@
     const inRightBranch = isRightBranch(promptNodeId);
     const flowDir = inRightBranch ? 'right' : 'below';
 
-    // Loading — parent to the prompt's parent so it appears next to the card
-    const loadingParent = promptNode.parentId || promptNodeId;
-    const loadingEl = renderLoading(prompt.text);
-    const loadingId = addCanvasNode('loading', loadingParent, flowDir, {}, loadingEl);
-
-    requestAnimationFrame(() => {
-      layoutAll();
-      setTimeout(() => {
-        layoutAll();
-        CanvasEngine.focusOn(loadingId, 0.85);
-      }, 50);
-    });
-
     callExploreAPI(prompt.text, conversationId, (response) => {
-      removeCanvasNode(loadingId);
 
       // Add headline from the prompt question
       const responseEl = renderResponseContent(response.blocks);
